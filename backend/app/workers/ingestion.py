@@ -1,4 +1,4 @@
-"""Celery task that drives fetch / hash / version for a queued job."""
+"""Celery task that drives fetch / hash / version / parse for a queued job."""
 
 from typing import Any
 from uuid import UUID
@@ -7,6 +7,7 @@ from app.core.db import get_sync_session_factory
 from app.core.logging import get_logger
 from app.ingestion.errors import NotFoundError
 from app.ingestion.service import IngestionService
+from app.parsers.errors import PermanentParseError
 from app.workers.celery_app import celery_app
 
 logger = get_logger(__name__)
@@ -20,9 +21,13 @@ def process_ingestion_job(self: Any, job_id: str) -> dict[str, str | bool | int]
         try:
             outcome = service.process_job(UUID(job_id))
             session.commit()
-        except NotFoundError:
+        except PermanentParseError:
             session.commit()
             logger.exception("ingestion.job_permanent_failure", job_id=job_id)
+            raise
+        except NotFoundError:
+            session.commit()
+            logger.exception("ingestion.job_not_found", job_id=job_id)
             raise
         except Exception as exc:
             session.commit()

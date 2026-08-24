@@ -62,6 +62,8 @@ class Settings(BaseSettings):
     )
     default_organization_id: str = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeee1"
     health_celery_timeout_seconds: float = 3.0
+    pdf_ocr_enabled: bool = True
+    pdf_ocr_min_chars_per_page: int = 40
 
     @computed_field  # type: ignore[prop-decorator]
     @property

@@ -21,6 +21,7 @@ from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
+from app.models.block import DocumentBlock
 from app.models.enums import DocumentState
 
 if TYPE_CHECKING:
@@ -68,6 +69,9 @@ class Document(TimestampMixin, Base):
     versions: Mapped[list[DocumentVersion]] = relationship(
         back_populates="document", order_by="DocumentVersion.version_number"
     )
+    blocks: Mapped[list[DocumentBlock]] = relationship(
+        back_populates="document", order_by="DocumentBlock.ordinal"
+    )
 
 
 class DocumentVersion(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -88,5 +92,14 @@ class DocumentVersion(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     is_current: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False, index=True)
     retrieved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     extra_metadata: Mapped[dict] = mapped_column("metadata", JSONB, default=dict, nullable=False)
+    parser_name: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    parser_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    used_ocr: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    parsed_block_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    parse_warnings: Mapped[list] = mapped_column(JSONB, default=list, nullable=False)
+    parsed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     document: Mapped[Document] = relationship(back_populates="versions")
+    blocks: Mapped[list[DocumentBlock]] = relationship(
+        back_populates="version", order_by="DocumentBlock.ordinal"
+    )

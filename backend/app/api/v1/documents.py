@@ -10,7 +10,14 @@ from app.api.v1.enqueue import enqueue_outcome
 from app.core.bootstrap import DEV_UPLOAD_SOURCE_ID
 from app.ingestion.errors import IngestionError, NotFoundError
 from app.ingestion.mime import UnsupportedUpload
-from app.ingestion.schemas import DocumentRead, DocumentVersionRead, JobRead, UploadResult
+from app.ingestion.schemas import (
+    BlockRead,
+    DocumentRead,
+    DocumentVersionRead,
+    JobRead,
+    ParsedBlocksRead,
+    UploadResult,
+)
 from app.ingestion.service import IngestionService
 from app.models.organization import Organization
 
@@ -83,6 +90,32 @@ def list_document_versions(
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     return [DocumentVersionRead.model_validate(item) for item in document.versions]
+
+
+@router.get("/{document_id}/blocks", response_model=ParsedBlocksRead)
+def get_document_blocks(
+    document_id: UUID,
+    org: Annotated[Organization, Depends(get_current_organization)],
+    service: Annotated[IngestionService, Depends(get_ingestion_service)],
+    version: int | None = None,
+) -> ParsedBlocksRead:
+    try:
+        document, doc_version, blocks = service.get_parsed_blocks(
+            org.id, document_id, version_number=version
+        )
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return ParsedBlocksRead(
+        document_id=document.id,
+        version_id=doc_version.id,
+        version_number=doc_version.version_number,
+        parser_name=doc_version.parser_name,
+        parser_version=doc_version.parser_version,
+        used_ocr=doc_version.used_ocr,
+        title=document.title,
+        warnings=list(doc_version.parse_warnings or []),
+        blocks=[BlockRead.model_validate(item) for item in blocks],
+    )
 
 
 @router.post("/{document_id}/reprocess", response_model=UploadResult)

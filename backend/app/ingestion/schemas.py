@@ -43,6 +43,12 @@ class DocumentVersionRead(ORMModel):
     original_filename: str | None
     is_current: bool
     retrieved_at: datetime
+    parser_name: str | None = None
+    parser_version: int | None = None
+    used_ocr: bool = False
+    parsed_block_count: int = 0
+    parse_warnings: list[Any] = Field(default_factory=list)
+    parsed_at: datetime | None = None
 
 
 class DocumentRead(ORMModel):
@@ -89,3 +95,26 @@ class UploadResult(BaseModel):
     unchanged: bool
     document: DocumentRead
     job: JobRead
+
+
+class BlockRead(ORMModel):
+    id: UUID
+    ordinal: int
+    type: str = Field(validation_alias="block_type")
+    text: str
+    level: int | None = Field(validation_alias="heading_level")
+    page: int | None
+    section: str | None
+    metadata: dict[str, Any] = Field(validation_alias="extra")
+
+
+class ParsedBlocksRead(BaseModel):
+    document_id: UUID
+    version_id: UUID
+    version_number: int
+    parser_name: str | None
+    parser_version: int | None
+    used_ocr: bool
+    title: str
+    warnings: list[Any] = Field(default_factory=list)
+    blocks: list[BlockRead]

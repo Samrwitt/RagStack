@@ -30,6 +30,7 @@ _ALLOWED: dict[DocumentState, frozenset[DocumentState]] = {
     DocumentState.PARSED: frozenset(
         {
             DocumentState.NORMALIZING,
+            DocumentState.PARSING,
             DocumentState.FETCHING,
             DocumentState.FAILED,
             DocumentState.DELETED,

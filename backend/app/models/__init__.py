@@ -1,6 +1,7 @@
 """ORM models for the CorpusForge control plane."""
 
 from app.models.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
+from app.models.block import DocumentBlock
 from app.models.document import Document, DocumentVersion
 from app.models.enums import (
     DocumentState,
@@ -18,6 +19,7 @@ from app.models.source import SourceConnection
 __all__ = [
     "Base",
     "Document",
+    "DocumentBlock",
     "DocumentState",
     "DocumentVersion",
     "FailureKind",

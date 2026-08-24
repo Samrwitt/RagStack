@@ -1,7 +1,7 @@
 """Ingestion control plane.
 
 Owns source connections, canonical documents, versioning, hashing, jobs,
-and the FETCHED-or-skip decision. Parsing and later stages are Phase 3+.
+and FETCHED → PARSING → PARSED. Normalization starts in Phase 4.
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID, uuid4
 
-from sqlalchemy import Select, select
+from sqlalchemy import Select, delete, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.storage import ObjectStorage, get_object_storage, raw_object_key
@@ -20,11 +20,15 @@ from app.ingestion.hashing import sha256_digest
 from app.ingestion.identity import normalize_source_id, stable_document_id
 from app.ingestion.mime import validate_upload
 from app.ingestion.state_machine import SUCCESS_STATES, transition
+from app.models.block import DocumentBlock
 from app.models.document import Document, DocumentVersion
-from app.models.enums import DocumentState, JobStatus, JobType, SourceStatus, SourceType
+from app.models.enums import DocumentState, FailureKind, JobStatus, JobType, SourceStatus, SourceType
 from app.models.job import IngestionJob
 from app.models.organization import Organization, Workspace
 from app.models.source import SourceConnection
+from app.parsers.errors import PermanentParseError, UnsupportedMimeError
+from app.parsers.models import RawDocument
+from app.parsers.registry import get_parser_registry
 
 
 def _utcnow() -> datetime:
@@ -142,6 +146,32 @@ class IngestionService:
         if document.organization_id != organization_id:
             raise TenantMismatchError("document does not belong to organization")
         return document
+
+    def get_parsed_blocks(
+        self,
+        organization_id: UUID,
+        document_id: UUID,
+        version_number: int | None = None,
+    ) -> tuple[Document, DocumentVersion, list[DocumentBlock]]:
+        document = self.get_document(organization_id, document_id)
+        if version_number is None:
+            version = self._current_version(document)
+        else:
+            stmt = select(DocumentVersion).where(
+                DocumentVersion.document_id == document.id,
+                DocumentVersion.version_number == version_number,
+            )
+            version = self.session.scalars(stmt).first()
+            if version is None:
+                raise NotFoundError(f"version {version_number} not found")
+        blocks = list(
+            self.session.scalars(
+                select(DocumentBlock)
+                .where(DocumentBlock.version_id == version.id)
+                .order_by(DocumentBlock.ordinal)
+            ).all()
+        )
+        return document, version, blocks
 
     def list_jobs(
         self,
@@ -272,11 +302,12 @@ class IngestionService:
         try:
             data = self._load_job_bytes(job, document)
             digest = sha256_digest(data)
-            if (
+            hash_unchanged = (
                 document.content_hash == digest
                 and document.current_version > 0
                 and document.current_state != DocumentState.DELETED.value
-            ):
+            )
+            if hash_unchanged and not self._needs_parse(document, job):
                 self._mark_job(
                     job,
                     JobStatus.SKIPPED_UNCHANGED,
@@ -284,6 +315,22 @@ class IngestionService:
                 )
                 self._drop_staging(job)
                 return IngestOutcome(document=document, job=job, unchanged=True, enqueue=False)
+
+            if hash_unchanged:
+                version = self._current_version(document)
+                parse_stats = self._parse_version(document, version, data)
+                self._mark_job(
+                    job,
+                    JobStatus.SUCCEEDED,
+                    {
+                        "version": document.current_version,
+                        "content_hash": digest,
+                        "reparsed": True,
+                        **parse_stats,
+                    },
+                )
+                self._drop_staging(job)
+                return IngestOutcome(document=document, job=job, unchanged=False, enqueue=False)
 
             self._enter_fetching(document)
             version_number = document.current_version + 1
@@ -314,14 +361,15 @@ class IngestionService:
                 extra_metadata={"source_id": document.source_id},
             )
             self.session.add(version)
+            self.session.flush()
             document.current_version = version_number
             document.content_hash = digest
             document.raw_object_key = stored.key
-            document.mime_type = document.mime_type
             document.last_error = None
             document.retry_count = 0
             document.deleted_at = None
             self._set_state(document, DocumentState.FETCHED)
+            parse_stats = self._parse_version(document, version, data)
             self._mark_job(
                 job,
                 JobStatus.SUCCEEDED,
@@ -330,6 +378,7 @@ class IngestionService:
                     "content_hash": digest,
                     "bytes": len(data),
                     "raw_object_key": stored.key,
+                    **parse_stats,
                 },
             )
             self._drop_staging(job)
@@ -337,6 +386,20 @@ class IngestionService:
             if source is not None:
                 source.last_sync_at = retrieved_at
             return IngestOutcome(document=document, job=job, unchanged=False, enqueue=False)
+        except PermanentParseError as exc:
+            document.last_error = str(exc)
+            document.retry_count += 1
+            try:
+                self._set_state(document, DocumentState.FAILED)
+            except Exception:
+                document.current_state = DocumentState.FAILED.value
+            self._mark_job(
+                job,
+                JobStatus.FAILED,
+                {"error": str(exc), "failure_kind": FailureKind.PERMANENT.value},
+            )
+            job.last_error = str(exc)
+            raise
         except Exception as exc:
             document.last_error = str(exc)
             document.retry_count += 1
@@ -344,7 +407,11 @@ class IngestionService:
                 self._set_state(document, DocumentState.FAILED)
             except Exception:
                 document.current_state = DocumentState.FAILED.value
-            self._mark_job(job, JobStatus.FAILED, {"error": str(exc)})
+            self._mark_job(
+                job,
+                JobStatus.FAILED,
+                {"error": str(exc), "failure_kind": FailureKind.TEMPORARY.value},
+            )
             job.last_error = str(exc)
             raise
 
@@ -484,7 +551,7 @@ class IngestionService:
     def _load_job_bytes(self, job: IngestionJob, document: Document) -> bytes:
         if job.staging_object_key:
             return self.storage.get_bytes(job.staging_object_key)
-        if job.job_type == JobType.REPROCESS.value and document.raw_object_key:
+        if document.raw_object_key:
             return self.storage.get_bytes(document.raw_object_key)
         raise NotFoundError("job has no staged or raw bytes to process")
 
@@ -534,3 +601,80 @@ class IngestionService:
 
     def _drop_staging(self, job: IngestionJob) -> None:
         job.staging_object_key = None
+
+    def _needs_parse(self, document: Document, job: IngestionJob) -> bool:
+        if job.job_type == JobType.REPROCESS.value:
+            return True
+        return document.current_state in {
+            DocumentState.FETCHED.value,
+            DocumentState.FAILED.value,
+            DocumentState.PARSING.value,
+        }
+
+    def _current_version(self, document: Document) -> DocumentVersion:
+        stmt = select(DocumentVersion).where(
+            DocumentVersion.document_id == document.id,
+            DocumentVersion.is_current.is_(True),
+        )
+        version = self.session.scalars(stmt).first()
+        if version is None:
+            raise NotFoundError("document has no current version to parse")
+        return version
+
+    def _enter_parsing(self, document: Document) -> None:
+        if document.current_state == DocumentState.PARSING.value:
+            return
+        self._set_state(document, DocumentState.PARSING)
+
+    def _parse_version(
+        self, document: Document, version: DocumentVersion, data: bytes
+    ) -> dict:
+        self._enter_parsing(document)
+        mime = version.mime_type or document.mime_type or "application/octet-stream"
+        raw = RawDocument(
+            data=data,
+            mime_type=mime,
+            filename=version.original_filename,
+            title=document.title,
+        )
+        try:
+            parsed = get_parser_registry().parse(raw)
+        except UnsupportedMimeError as exc:
+            raise PermanentParseError(str(exc)) from exc
+        self._replace_blocks(document, version, parsed)
+        if parsed.title:
+            document.title = parsed.title[:512]
+        document.last_error = None
+        self._set_state(document, DocumentState.PARSED)
+        return {
+            "parser_name": parsed.parser_name,
+            "parser_version": parsed.parser_version,
+            "block_count": len(parsed.blocks),
+            "used_ocr": parsed.used_ocr,
+            "warnings": parsed.warnings,
+        }
+
+    def _replace_blocks(self, document: Document, version: DocumentVersion, parsed) -> None:  # noqa: ANN001
+        self.session.execute(
+            delete(DocumentBlock).where(DocumentBlock.version_id == version.id)
+        )
+        for block in parsed.blocks:
+            self.session.add(
+                DocumentBlock(
+                    document_id=document.id,
+                    version_id=version.id,
+                    ordinal=block.ordinal,
+                    block_type=block.type.value,
+                    text=block.text,
+                    heading_level=block.level,
+                    page=block.page,
+                    section=block.section,
+                    extra=block.metadata,
+                )
+            )
+        version.parser_name = parsed.parser_name
+        version.parser_version = parsed.parser_version
+        version.used_ocr = parsed.used_ocr
+        version.parsed_block_count = len(parsed.blocks)
+        version.parse_warnings = parsed.warnings
+        version.parsed_at = _utcnow()
