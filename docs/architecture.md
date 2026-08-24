@@ -98,9 +98,10 @@ backend/app/
 
 All process config is `pydantic-settings` (`app.core.config.Settings`). Docker Compose injects service hostnames. Local defaults match published ports so unit tests and a host-side venv can target the same stack.
 
-## Known limitations (through Phase 2)
+## Known limitations (through Phase 3)
 
-- Parsing, chunking, embeddings, and search are not implemented yet.
+- Normalization, chunking, embeddings, and search are not implemented yet.
 - JWT/RBAC is deferred to Phase 13; local APIs default to the Acme tenant.
 - No Qdrant collections (Phase 6).
 - Frontend is deferred to Phase 12.
+- Scanned-PDF OCR needs Tesseract in the image; unit tests cover digital PDFs and the OCR gate, not a live Tesseract pass.

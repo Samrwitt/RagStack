@@ -1,6 +1,6 @@
 # Ingestion
 
-Status: **Phase 2 implemented** (fetch, hash, version, skip). Parsing starts in Phase 3.
+Status: **Phase 3 implemented** (fetch, hash, version, skip, structured parse). Normalization starts in Phase 4.
 
 ## Goals
 
@@ -10,19 +10,21 @@ Status: **Phase 2 implemented** (fetch, hash, version, skip). Parsing starts in 
 4. Skip work when the SHA-256 content hash is unchanged.
 5. Version documents when the hash changes; only current versions are searchable later.
 6. Drive a visible state machine from `DISCOVERED` through `INDEXED`.
-7. Propagate deletes through chunks and vector points (vector cleanup is Phase 6/17).
+7. Parse into structured blocks (not a flattened string) before later stages.
+8. Propagate deletes through chunks and vector points (vector cleanup is Phase 6/7).
 
-## What Phase 2 does
+## What Phase 2–3 do
 
 ```text
 upload / discover
-    → stable document ID
-    → SHA-256 of original bytes
-    → unchanged? SKIPPED_UNCHANGED (no new version)
-    → changed? store raw/vN, version += 1, state FETCHED
+  → stable document ID
+  → SHA-256 of original bytes
+  → unchanged? SKIPPED_UNCHANGED (no new version)
+  → changed? store raw/vN, version += 1, state FETCHED
+  → PARSING → PARSED (structured blocks)
 ```
 
-The pipeline **stops at FETCHED**. Phase 3 continues FETCHED → PARSING.
+Identical bytes at submit time never enqueue a worker. A **reprocess** job replays stored raw and re-parses even when the hash is unchanged (parser upgrades).
 
 ## Connector protocol
 
@@ -36,7 +38,7 @@ class SourceConnector(Protocol):
 
 Connectors emit a **canonical document**. Downstream stages must not branch on source type.
 
-Phase 2 connector: **local file upload** (PDF, TXT, Markdown, HTML, DOCX).  
+Phase 2 connector: **local file upload** (PDF, TXT, Markdown, HTML, DOCX).
 Phase 10: website, GitHub, PostgreSQL, REST API.
 
 ## Identity and hashing
@@ -69,9 +71,16 @@ DISCOVERED → FETCHING → FETCHED → PARSING → PARSED → NORMALIZING
 FAILED | DELETED
 ```
 
-`UNCHANGED` is a **job outcome**, not a document state. The document stays at its last successful state (typically `FETCHED`).
+`UNCHANGED` is a **job outcome**, not a document state. The document stays at its last successful state (typically `PARSED` after Phase 3).
+
+`PARSED → PARSING` is allowed so a reprocess can upgrade parser output without pretending to re-fetch.
 
 Each document stores `current_state`, `last_successful_state`, `last_error`, `retry_count`, `updated_at`.
+
+Parse failures are classified:
+
+- **permanent** (`unsupported MIME`, corrupt file, scanned PDF with no OCR recovery) — Celery does not retry
+- **temporary** (storage/network) — exponential backoff
 
 ## Jobs and idempotency
 
@@ -85,11 +94,15 @@ Retry: `POST /api/v1/jobs/{id}/retry`. Reprocess from stored raw (no re-fetch): 
 docker compose up --build
 curl -s http://localhost:8000/api/v1/sources
 
-curl -F "file=@handbook.txt;filename=employee-handbook.txt;type=text/plain" \
+curl -F "file=@handbook.md;filename=employee-handbook.md;type=text/markdown" \
   http://localhost:8000/api/v1/documents/upload
 
 # identical bytes → unchanged: true, status SKIPPED_UNCHANGED
-# edited bytes → new version, previous is_current=false
+# edited bytes → new version, previous is_current=false, state PARSED
+
+curl -s http://localhost:8000/api/v1/documents/{id}/blocks
 ```
 
 Omit `X-Organization-Id` in development; the API bootstraps the Acme Systems tenant.
+
+See [parsing.md](parsing.md) for parser versioning, block types, and OCR policy.

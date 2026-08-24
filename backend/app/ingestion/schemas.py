@@ -97,15 +97,15 @@ class UploadResult(BaseModel):
     job: JobRead
 
 
-class BlockRead(ORMModel):
+class BlockRead(BaseModel):
     id: UUID
     ordinal: int
-    type: str = Field(validation_alias="block_type")
+    type: str
     text: str
-    level: int | None = Field(validation_alias="heading_level")
-    page: int | None
-    section: str | None
-    metadata: dict[str, Any] = Field(validation_alias="extra")
+    level: int | None = None
+    page: int | None = None
+    section: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class ParsedBlocksRead(BaseModel):

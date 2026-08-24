@@ -1,9 +1,7 @@
 """Parse failures. Permanent errors must not be retried by Celery."""
 
-from app.ingestion.errors import IngestionError
 
-
-class ParseError(IngestionError):
+class ParseError(Exception):
     """Base class for parser failures."""
 
 

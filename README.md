@@ -71,7 +71,8 @@ See [docs/architecture.md](docs/architecture.md) for package layout, tenancy, an
 | --- | --- | --- |
 | 1 | Foundation: FastAPI, PostgreSQL, Redis, Celery, MinIO, Qdrant, Docker Compose, Alembic, health checks | **Complete** |
 | 2 | Ingestion control plane: sources, canonical documents, hashing, versioning, state machine | **Complete** |
-| 3–13 | Parsing through production hardening (frontend, evaluation, RBAC) | Planned |
+| 3 | Parsing: TXT, Markdown, HTML, DOCX, PDF structured blocks, parser versioning, OCR fallback | **Complete** |
+| 4–13 | Normalization through production hardening (frontend, evaluation, RBAC) | Planned |
 
 ## Local development
 

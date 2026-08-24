@@ -114,7 +114,19 @@ def get_document_blocks(
         used_ocr=doc_version.used_ocr,
         title=document.title,
         warnings=list(doc_version.parse_warnings or []),
-        blocks=[BlockRead.model_validate(item) for item in blocks],
+        blocks=[
+            BlockRead(
+                id=item.id,
+                ordinal=item.ordinal,
+                type=item.block_type,
+                text=item.text,
+                level=item.heading_level,
+                page=item.page,
+                section=item.section,
+                metadata=item.extra or {},
+            )
+            for item in blocks
+        ],
     )
 
 

@@ -10,7 +10,7 @@ docker compose up --build
 
 or `make up`.
 
-Compose starts PostgreSQL, Redis, MinIO, Qdrant, runs Alembic, then the API and Celery worker.
+Compose starts PostgreSQL, Redis, MinIO, Qdrant, runs Alembic, then the API and Celery worker. The API/worker image includes Tesseract and Poppler so scanned PDFs can be OCR'd when digital text is insufficient.
 
 ### Acceptance
 
