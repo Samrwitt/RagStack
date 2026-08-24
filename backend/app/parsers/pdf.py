@@ -159,10 +159,7 @@ def _words_to_blocks(acc: BlockAccumulator, page_number: int, words: list[dict])
 def _inside_any(word: dict, bboxes: list[tuple[float, float, float, float]]) -> bool:
     x = float(word.get("x0") or 0)
     y = float(word.get("top") or 0)
-    for x0, top, x1, bottom in bboxes:
-        if x0 <= x <= x1 and top <= y <= bottom:
-            return True
-    return False
+    return any(x0 <= x <= x1 and top <= y <= bottom for x0, top, x1, bottom in bboxes)
 
 
 def _pipe_table(rows: list[list[str]]) -> str:

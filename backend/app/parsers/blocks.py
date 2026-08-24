@@ -23,8 +23,7 @@ class BlockAccumulator:
         self.title: str | None = None
         self._section: str | None = None
         self.warnings: list[str] = []
-        if default_title:
-            self.title = default_title.strip() or None
+        self._fallback = (default_title or "").strip() or None
 
     def add(
         self,
@@ -63,7 +62,7 @@ class BlockAccumulator:
         used_ocr: bool = False,
         page_count: int | None = None,
     ) -> ParsedDocument:
-        title = (self.title or fallback).strip()[:512] or "Untitled"
+        title = (self.title or self._fallback or fallback).strip()[:512] or "Untitled"
         blocks = list(self.blocks)
         if not any(block.type is BlockType.TITLE for block in blocks):
             title_block = Block(

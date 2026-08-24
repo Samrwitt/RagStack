@@ -22,7 +22,14 @@ from app.ingestion.mime import validate_upload
 from app.ingestion.state_machine import SUCCESS_STATES, transition
 from app.models.block import DocumentBlock
 from app.models.document import Document, DocumentVersion
-from app.models.enums import DocumentState, FailureKind, JobStatus, JobType, SourceStatus, SourceType
+from app.models.enums import (
+    DocumentState,
+    FailureKind,
+    JobStatus,
+    JobType,
+    SourceStatus,
+    SourceType,
+)
 from app.models.job import IngestionJob
 from app.models.organization import Organization, Workspace
 from app.models.source import SourceConnection

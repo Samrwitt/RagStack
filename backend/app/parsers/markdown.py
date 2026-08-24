@@ -89,8 +89,9 @@ def _walk(tokens: list, acc: BlockAccumulator) -> None:
 
 
 def _inline_content(token) -> tuple[str, list[str]]:  # noqa: ANN001
-    text = token.content if token is not None else ""
     captions: list[str] = []
+    if token is None:
+        return "", captions
     for child in getattr(token, "children", None) or []:
         if child.type == "image":
             alt = child.content or ""
@@ -100,7 +101,26 @@ def _inline_content(token) -> tuple[str, list[str]]:  # noqa: ANN001
             caption = alt or title
             if caption:
                 captions.append(caption)
-    return text, captions
+    return _inline_text(token), captions
+
+
+def _inline_text(token) -> str:  # noqa: ANN001
+    children = getattr(token, "children", None)
+    if not children:
+        return token.content or ""
+    parts: list[str] = []
+    for child in children:
+        if child.type in {"text", "code_inline", "entity"}:
+            parts.append(child.content or "")
+        elif child.type in {"softbreak", "hardbreak"}:
+            parts.append(" ")
+        elif child.type == "image":
+            continue
+        elif getattr(child, "children", None):
+            parts.append(_inline_text(child))
+        elif child.content:
+            parts.append(child.content)
+    return "".join(parts)
 
 
 def _captions(acc: BlockAccumulator, captions: list[str]) -> None:

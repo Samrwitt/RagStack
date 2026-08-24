@@ -19,11 +19,19 @@ def ocr_available() -> bool:
     return True
 
 
-def should_ocr(extracted_chars: int, page_count: int, min_chars_per_page: int | None = None) -> bool:
+def should_ocr(
+    extracted_chars: int,
+    page_count: int,
+    min_chars_per_page: int | None = None,
+) -> bool:
     settings = get_settings()
     if not settings.pdf_ocr_enabled:
         return False
-    threshold = min_chars_per_page if min_chars_per_page is not None else settings.pdf_ocr_min_chars_per_page
+    threshold = (
+        min_chars_per_page
+        if min_chars_per_page is not None
+        else settings.pdf_ocr_min_chars_per_page
+    )
     pages = max(page_count, 1)
     return extracted_chars < threshold * pages
 

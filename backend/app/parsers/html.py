@@ -45,7 +45,11 @@ def _walk(node: Tag, acc: BlockAccumulator) -> None:
     for child in list(node.children):
         if isinstance(child, NavigableString):
             text = str(child).strip()
-            if text and child.parent is node and node.name in {"body", "div", "article", "main", "section"}:
+            if (
+                text
+                and child.parent is node
+                and node.name in {"body", "div", "article", "main", "section"}
+            ):
                 acc.add(BlockType.PARAGRAPH, text)
             continue
         if not isinstance(child, Tag):

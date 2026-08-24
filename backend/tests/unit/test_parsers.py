@@ -1,6 +1,7 @@
 """Parser selection and structured-block extraction."""
 
 from io import BytesIO
+from pathlib import Path
 
 import pytest
 from docx import Document as DocxDocument
@@ -13,7 +14,12 @@ from app.parsers.registry import ParserRegistry, get_parser_registry
 
 
 def _raw(mime: str, data: bytes, filename: str = "doc") -> RawDocument:
-    return RawDocument(data=data, mime_type=mime, filename=filename, title=None)
+    return RawDocument(
+        data=data,
+        mime_type=mime,
+        filename=filename,
+        title=Path(filename).stem,
+    )
 
 
 def test_registry_selects_parser_by_mime() -> None:
@@ -62,7 +68,7 @@ def test_markdown_parser_preserves_headings_lists_code_and_tables() -> None:
 
 ## Tokens
 
-Use a bearer token.
+Use a **bearer** token.
 
 - Access token
 - Refresh token
@@ -88,6 +94,9 @@ print("ok")
     heading = next(block for block in parsed.blocks if block.type is BlockType.HEADING)
     assert heading.level == 2
     assert heading.text == "Tokens"
+    paragraph = next(block for block in parsed.blocks if block.type is BlockType.PARAGRAPH)
+    assert "bearer" in paragraph.text
+    assert "**" not in paragraph.text
     table = next(block for block in parsed.blocks if block.type is BlockType.TABLE)
     assert table.metadata["rows"][0] == ["Method", "Path"]
     code = next(block for block in parsed.blocks if block.type is BlockType.CODE)

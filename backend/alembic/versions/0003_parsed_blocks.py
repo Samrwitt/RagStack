@@ -35,7 +35,10 @@ def upgrade() -> None:
         "document_versions",
         sa.Column("parse_warnings", JSONB, nullable=False, server_default=sa.text("'[]'::jsonb")),
     )
-    op.add_column("document_versions", sa.Column("parsed_at", sa.DateTime(timezone=True), nullable=True))
+    op.add_column(
+        "document_versions",
+        sa.Column("parsed_at", sa.DateTime(timezone=True), nullable=True),
+    )
     op.create_table(
         "document_blocks",
         sa.Column("id", UUID, primary_key=True, server_default=sa.text("gen_random_uuid()")),
@@ -48,8 +51,18 @@ def upgrade() -> None:
         sa.Column("page", sa.Integer(), nullable=True),
         sa.Column("section", sa.String(512), nullable=True),
         sa.Column("extra", JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
         sa.UniqueConstraint("version_id", "ordinal", name="uq_document_block_ordinal"),
     )
     op.create_index("ix_document_blocks_document_id", "document_blocks", ["document_id"])
