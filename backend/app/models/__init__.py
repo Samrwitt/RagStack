@@ -2,6 +2,7 @@
 
 from app.models.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 from app.models.block import DocumentBlock
+from app.models.chunk import DocumentChunk
 from app.models.document import Document, DocumentVersion
 from app.models.duplicate import DocumentDuplicate
 from app.models.enums import (
@@ -22,6 +23,7 @@ __all__ = [
     "Base",
     "Document",
     "DocumentBlock",
+    "DocumentChunk",
     "DocumentDuplicate",
     "DocumentState",
     "DocumentVersion",

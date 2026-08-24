@@ -94,8 +94,8 @@ def test_same_bytes_different_filenames_are_exact_duplicates(session: Session) -
         ),
     )
     assert first.document.id != second.document.id
-    assert first.document.current_state == DocumentState.NORMALIZED.value
-    assert second.document.current_state == DocumentState.NORMALIZED.value
+    assert first.document.current_state == DocumentState.CHUNKED.value
+    assert second.document.current_state == DocumentState.CHUNKED.value
     assert first.document.current_state != DocumentState.DELETED.value
     session.refresh(second.document)
     assert second.document.canonical_document_id == first.document.id
@@ -161,7 +161,7 @@ def test_near_duplicate_is_recorded_without_deleting(session: Session) -> None:
         ),
     )
     assert first.document.id != second.document.id
-    assert second.document.current_state == DocumentState.NORMALIZED.value
+    assert second.document.current_state == DocumentState.CHUNKED.value
     rows = (
         session.query(DocumentDuplicate)
         .filter_by(organization_id=org.id, kind=DuplicateKind.NEAR.value)

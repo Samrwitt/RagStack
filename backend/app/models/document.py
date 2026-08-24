@@ -23,6 +23,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 from app.models.block import DocumentBlock
+from app.models.chunk import DocumentChunk
 from app.models.enums import DocumentState
 
 if TYPE_CHECKING:
@@ -77,6 +78,9 @@ class Document(TimestampMixin, Base):
     blocks: Mapped[list[DocumentBlock]] = relationship(
         back_populates="document", order_by="DocumentBlock.ordinal"
     )
+    chunks: Mapped[list[DocumentChunk]] = relationship(
+        back_populates="document", order_by="DocumentChunk.ordinal"
+    )
 
 
 class DocumentVersion(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -114,8 +118,17 @@ class DocumentVersion(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         DateTime(timezone=True), nullable=True
     )
     duplicate_kind: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    chunk_strategy: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    chunker_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    chunk_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    chunked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     document: Mapped[Document] = relationship(back_populates="versions")
     blocks: Mapped[list[DocumentBlock]] = relationship(
         back_populates="version", order_by="DocumentBlock.ordinal"
+    )
+    chunks: Mapped[list[DocumentChunk]] = relationship(
+        back_populates="version", order_by="DocumentChunk.ordinal"
     )

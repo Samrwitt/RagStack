@@ -55,6 +55,9 @@ _ALLOWED: dict[DocumentState, frozenset[DocumentState]] = {
     DocumentState.CHUNKED: frozenset(
         {
             DocumentState.EMBEDDING,
+            DocumentState.CHUNKING,
+            DocumentState.PARSING,
+            DocumentState.NORMALIZING,
             DocumentState.FETCHING,
             DocumentState.FAILED,
             DocumentState.DELETED,
@@ -82,6 +85,7 @@ _ALLOWED: dict[DocumentState, frozenset[DocumentState]] = {
             DocumentState.FETCHING,
             DocumentState.PARSING,
             DocumentState.NORMALIZING,
+            DocumentState.CHUNKING,
             DocumentState.DELETED,
         }
     ),

@@ -1,8 +1,7 @@
 """Ingestion control plane.
 
 Owns source connections, canonical documents, versioning, hashing, jobs,
-and FETCHED → PARSING → PARSED → NORMALIZING → NORMALIZED. Chunking starts
-in Phase 5.
+and FETCHED → … → NORMALIZED → CHUNKING → CHUNKED. Embedding starts in Phase 6.
 """
 
 from __future__ import annotations
@@ -15,6 +14,9 @@ from uuid import UUID, uuid4
 from sqlalchemy import Select, delete, or_, select
 from sqlalchemy.orm import Session, selectinload
 
+from app.chunking.models import BlockInput
+from app.chunking.registry import run_chunker
+from app.core.config import get_settings
 from app.core.storage import ObjectStorage, get_object_storage, raw_object_key
 from app.ingestion.errors import NotFoundError, SourcePausedError, TenantMismatchError
 from app.ingestion.hashing import sha256_digest
@@ -22,6 +24,7 @@ from app.ingestion.identity import normalize_source_id, stable_document_id
 from app.ingestion.mime import validate_upload
 from app.ingestion.state_machine import SUCCESS_STATES, transition
 from app.models.block import DocumentBlock
+from app.models.chunk import DocumentChunk
 from app.models.document import Document, DocumentVersion
 from app.models.duplicate import DocumentDuplicate
 from app.models.enums import (
@@ -185,6 +188,32 @@ class IngestionService:
             ).all()
         )
         return document, version, blocks
+
+    def get_chunks(
+        self,
+        organization_id: UUID,
+        document_id: UUID,
+        version_number: int | None = None,
+    ) -> tuple[Document, DocumentVersion, list[DocumentChunk]]:
+        document = self.get_document(organization_id, document_id)
+        if version_number is None:
+            version = self._current_version(document)
+        else:
+            stmt = select(DocumentVersion).where(
+                DocumentVersion.document_id == document.id,
+                DocumentVersion.version_number == version_number,
+            )
+            version = self.session.scalars(stmt).first()
+            if version is None:
+                raise NotFoundError(f"version {version_number} not found")
+        chunks = list(
+            self.session.scalars(
+                select(DocumentChunk)
+                .where(DocumentChunk.version_id == version.id)
+                .order_by(DocumentChunk.ordinal)
+            ).all()
+        )
+        return document, version, chunks
 
     def list_duplicates(
         self, organization_id: UUID, document_id: UUID
@@ -406,6 +435,7 @@ class IngestionService:
                 }
 
             norm_stats = self._normalize_version(document, version)
+            chunk_stats = self._chunk_version(document, version)
             self._mark_job(
                 job,
                 JobStatus.SUCCEEDED,
@@ -414,6 +444,7 @@ class IngestionService:
                     "content_hash": digest,
                     **parse_stats,
                     **norm_stats,
+                    **chunk_stats,
                 },
             )
             self._drop_staging(job)
@@ -648,6 +679,8 @@ class IngestionService:
             DocumentState.PARSING.value,
             DocumentState.PARSED.value,
             DocumentState.NORMALIZING.value,
+            DocumentState.NORMALIZED.value,
+            DocumentState.CHUNKING.value,
             DocumentState.FAILED.value,
         }
 
@@ -800,4 +833,79 @@ class IngestionService:
             "normalized_dropped": result.dropped,
             "normalizer_version": result.normalizer_version,
             "duplicates": dup_stats,
+        }
+
+    def _enter_chunking(self, document: Document) -> None:
+        if document.current_state == DocumentState.CHUNKING.value:
+            return
+        self._set_state(document, DocumentState.CHUNKING)
+
+    def _chunk_version(self, document: Document, version: DocumentVersion) -> dict:
+        self._enter_chunking(document)
+        settings = get_settings()
+        rows = list(
+            self.session.scalars(
+                select(DocumentBlock)
+                .where(DocumentBlock.version_id == version.id)
+                .order_by(DocumentBlock.ordinal)
+            ).all()
+        )
+        inputs = [
+            BlockInput(
+                ordinal=row.ordinal,
+                block_type=row.block_type,
+                text=(row.normalized_text if row.normalized_text is not None else row.text),
+                page=row.page,
+                heading_level=row.heading_level,
+                section=row.section,
+                dropped=bool((row.extra or {}).get("dropped")),
+            )
+            for row in rows
+        ]
+        result = run_chunker(
+            inputs,
+            strategy=settings.chunk_strategy,
+            chunk_size=settings.chunk_size,
+            overlap=settings.chunk_overlap,
+            parent_max_tokens=settings.parent_chunk_max_tokens,
+        )
+        self.session.execute(
+            delete(DocumentChunk).where(DocumentChunk.version_id == version.id)
+        )
+        self.session.flush()
+        created: list[DocumentChunk] = []
+        for ordinal, draft in enumerate(result.chunks):
+            created.append(
+                DocumentChunk(
+                    document_id=document.id,
+                    version_id=version.id,
+                    parent_chunk_id=None,
+                    ordinal=ordinal,
+                    text=draft.text,
+                    token_count=draft.token_count,
+                    page=draft.page,
+                    section=draft.section,
+                    strategy=result.strategy.value,
+                    kind=draft.kind.value,
+                    extra=dict(draft.metadata),
+                )
+            )
+            self.session.add(created[-1])
+        self.session.flush()
+        for ordinal, draft in enumerate(result.chunks):
+            if draft.parent_index is None:
+                continue
+            created[ordinal].parent_chunk_id = created[draft.parent_index].id
+        version.chunk_strategy = result.strategy.value
+        version.chunker_version = result.chunker_version
+        version.chunk_count = len(created)
+        version.chunked_at = _utcnow()
+        document.last_error = None
+        self._set_state(document, DocumentState.CHUNKED)
+        return {
+            "chunk_strategy": result.strategy.value,
+            "chunker_version": result.chunker_version,
+            "chunk_count": len(created),
+            "parent_chunks": sum(1 for item in created if item.kind == "parent"),
+            "child_chunks": sum(1 for item in created if item.kind == "child"),
         }

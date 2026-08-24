@@ -56,6 +56,10 @@ class DocumentVersionRead(ORMModel):
     normalizer_version: int | None = None
     normalized_at: datetime | None = None
     duplicate_kind: str | None = None
+    chunk_strategy: str | None = None
+    chunker_version: int | None = None
+    chunk_count: int = 0
+    chunked_at: datetime | None = None
 
 
 class DocumentRead(ORMModel):
@@ -143,3 +147,26 @@ class DuplicateRead(ORMModel):
     kind: str
     score: float
     created_at: datetime
+
+
+class ChunkRead(BaseModel):
+    id: UUID
+    ordinal: int
+    text: str
+    token_count: int
+    page: int | None = None
+    section: str | None = None
+    strategy: str
+    kind: str
+    parent_chunk_id: UUID | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class ChunksRead(BaseModel):
+    document_id: UUID
+    version_id: UUID
+    version_number: int
+    strategy: str | None
+    chunker_version: int | None
+    chunk_count: int
+    chunks: list[ChunkRead]

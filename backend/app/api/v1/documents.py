@@ -12,6 +12,8 @@ from app.ingestion.errors import IngestionError, NotFoundError
 from app.ingestion.mime import UnsupportedUpload
 from app.ingestion.schemas import (
     BlockRead,
+    ChunkRead,
+    ChunksRead,
     DocumentRead,
     DocumentVersionRead,
     DuplicateRead,
@@ -148,6 +150,44 @@ def list_document_duplicates(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     return [DuplicateRead.model_validate(item) for item in rows]
 
+
+
+@router.get("/{document_id}/chunks", response_model=ChunksRead)
+def get_document_chunks(
+    document_id: UUID,
+    org: Annotated[Organization, Depends(get_current_organization)],
+    service: Annotated[IngestionService, Depends(get_ingestion_service)],
+    version: int | None = None,
+) -> ChunksRead:
+    try:
+        document, doc_version, chunks = service.get_chunks(
+            org.id, document_id, version_number=version
+        )
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return ChunksRead(
+        document_id=document.id,
+        version_id=doc_version.id,
+        version_number=doc_version.version_number,
+        strategy=doc_version.chunk_strategy,
+        chunker_version=doc_version.chunker_version,
+        chunk_count=doc_version.chunk_count,
+        chunks=[
+            ChunkRead(
+                id=item.id,
+                ordinal=item.ordinal,
+                text=item.text,
+                token_count=item.token_count,
+                page=item.page,
+                section=item.section,
+                strategy=item.strategy,
+                kind=item.kind,
+                parent_chunk_id=item.parent_chunk_id,
+                metadata=item.extra or {},
+            )
+            for item in chunks
+        ],
+    )
 
 @router.post("/{document_id}/reprocess", response_model=UploadResult)
 def reprocess_document(

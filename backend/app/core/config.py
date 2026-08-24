@@ -66,6 +66,10 @@ class Settings(BaseSettings):
     pdf_ocr_min_chars_per_page: int = 40
     near_duplicate_max_hamming: int = 3
     near_duplicate_scan_limit: int = 500
+    chunk_strategy: str = "parent_child"
+    chunk_size: int = 256
+    chunk_overlap: int = 32
+    parent_chunk_max_tokens: int = 1024
 
     @computed_field  # type: ignore[prop-decorator]
     @property

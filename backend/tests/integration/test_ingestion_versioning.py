@@ -87,7 +87,7 @@ def test_unchanged_upload_does_not_reprocess(session: Session) -> None:
     )
     assert first.unchanged is False
     assert first.document.current_version == 1
-    assert first.document.current_state == DocumentState.NORMALIZED.value
+    assert first.document.current_state == DocumentState.CHUNKED.value
     assert first.document.content_hash == sha256_digest(payload)
     assert first.job.status == JobStatus.SUCCEEDED.value
     blocks = session.query(DocumentBlock).filter_by(document_id=first.document.id).all()
@@ -152,7 +152,7 @@ def test_changed_upload_creates_new_version(session: Session) -> None:
     assert versions[0].is_current is False
     assert versions[1].is_current is True
     assert versions[0].content_hash != versions[1].content_hash
-    assert second.document.current_state == DocumentState.NORMALIZED.value
+    assert second.document.current_state == DocumentState.CHUNKED.value
     current_blocks = (
         session.query(DocumentBlock).filter_by(version_id=versions[1].id).all()
     )
