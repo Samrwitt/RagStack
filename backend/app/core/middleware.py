@@ -3,7 +3,10 @@
 import uuid
 from collections.abc import Awaitable, Callable
 
-import structlog
+try:
+    import structlog
+except ModuleNotFoundError:  # pragma: no cover - minimal unit-test environments
+    structlog = None  # type: ignore[assignment]
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
@@ -22,8 +25,9 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
         incoming = request.headers.get(REQUEST_ID_HEADER)
         request_id = incoming.strip() if incoming else str(uuid.uuid4())
         request.state.request_id = request_id
-        structlog.contextvars.clear_contextvars()
-        structlog.contextvars.bind_contextvars(request_id=request_id)
+        if structlog is not None:
+            structlog.contextvars.clear_contextvars()
+            structlog.contextvars.bind_contextvars(request_id=request_id)
         response = await call_next(request)
         response.headers[REQUEST_ID_HEADER] = request_id
         return response

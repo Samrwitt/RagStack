@@ -1,4 +1,23 @@
-"""Dense, sparse (BM25), and hybrid retrieval with metadata and ACL filters.
+"""Dense, sparse, and hybrid retrieval."""
 
-Phase 7 implements Reciprocal Rank Fusion and permission-aware search.
-"""
+from app.retrieval.bm25 import BM25Retriever
+from app.retrieval.models import (
+    ACLContext,
+    RetrievalFilters,
+    RetrievalHit,
+    RetrievalMode,
+    RetrievalRequest,
+)
+from app.retrieval.rrf import reciprocal_rank_fusion
+from app.retrieval.service import RetrievalService
+
+__all__ = [
+    "ACLContext",
+    "BM25Retriever",
+    "RetrievalFilters",
+    "RetrievalHit",
+    "RetrievalMode",
+    "RetrievalRequest",
+    "RetrievalService",
+    "reciprocal_rank_fusion",
+]

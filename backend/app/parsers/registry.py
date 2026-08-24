@@ -3,17 +3,18 @@
 from __future__ import annotations
 
 from app.ingestion.mime import canonicalize_mime
-from app.parsers.docx import DocxParser
 from app.parsers.errors import UnsupportedMimeError
 from app.parsers.html import HtmlParser
 from app.parsers.markdown import MarkdownParser
 from app.parsers.models import ParsedDocument, RawDocument
-from app.parsers.pdf import PdfParser
 from app.parsers.protocol import DocumentParser
 from app.parsers.txt import TxtParser
 
 
 def default_parsers() -> list[DocumentParser]:
+    from app.parsers.docx import DocxParser
+    from app.parsers.pdf import PdfParser
+
     return [TxtParser(), MarkdownParser(), HtmlParser(), DocxParser(), PdfParser()]
 
 
@@ -42,8 +43,11 @@ class ParserRegistry:
         return parser.name, parser.version
 
 
-_REGISTRY = ParserRegistry()
+_REGISTRY: ParserRegistry | None = None
 
 
 def get_parser_registry() -> ParserRegistry:
+    global _REGISTRY
+    if _REGISTRY is None:
+        _REGISTRY = ParserRegistry()
     return _REGISTRY

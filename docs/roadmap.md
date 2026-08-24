@@ -33,6 +33,8 @@ Suggested tests:
 
 ## Phase 7 - Search
 
+Status: **in progress**. The first slice includes retrieval contracts, BM25 over current chunks, metadata filters, ACL filtering, Reciprocal Rank Fusion, and a search endpoint. Dense Qdrant retrieval is the next slice.
+
 Goal: provide dense, lexical, and hybrid retrieval with metadata and ACL filters enforced before ranking results are exposed.
 
 Deliverables:

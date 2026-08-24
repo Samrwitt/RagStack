@@ -12,7 +12,6 @@ from app.embeddings.service import EmbeddingService
 from app.ingestion.errors import NotFoundError
 from app.ingestion.service import IngestionService
 from app.models.organization import Organization
-from app.workers.embedding import delete_document_vectors, embed_document
 
 router = APIRouter(prefix="/embeddings", tags=["embeddings"])
 
@@ -37,6 +36,8 @@ def enqueue_document_embedding(
         ingestion.get_document(org.id, document_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    from app.workers.embedding import embed_document
+
     result = embed_document.delay(str(document_id))
     return EmbeddingTaskRead(
         document_id=document_id,
@@ -55,6 +56,8 @@ def enqueue_document_vector_delete(
         ingestion.get_document(org.id, document_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    from app.workers.embedding import delete_document_vectors
+
     result = delete_document_vectors.delay(str(document_id))
     return EmbeddingTaskRead(
         document_id=document_id,

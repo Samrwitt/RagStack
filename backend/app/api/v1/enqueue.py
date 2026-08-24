@@ -3,12 +3,13 @@
 from sqlalchemy.orm import Session
 
 from app.ingestion.service import IngestOutcome
-from app.workers.ingestion import process_ingestion_job
 
 
 def enqueue_outcome(session: Session, outcome: IngestOutcome) -> None:
     if not outcome.enqueue:
         return
+    from app.workers.ingestion import process_ingestion_job
+
     session.commit()
     result = process_ingestion_job.delay(str(outcome.job.id))
     outcome.job.celery_task_id = result.id
