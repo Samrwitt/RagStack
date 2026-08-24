@@ -38,16 +38,21 @@ def search(
             user_id=payload.user_id,
             group_ids=frozenset(payload.group_ids),
         ),
+        rerank=payload.rerank,
+        context_token_budget=payload.context_token_budget,
     )
     try:
-        hits = RetrievalService(session).search(request)
+        hits, context = RetrievalService(session).search_with_context(request)
     except NotImplementedError as exc:
         raise HTTPException(
             status_code=status.HTTP_501_NOT_IMPLEMENTED,
             detail=str(exc),
         ) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     return SearchResponse(
         query=payload.query,
         mode=payload.mode,
         hits=[SearchHitRead(**asdict(hit)) for hit in hits],
+        context=[SearchHitRead(**asdict(item.hit)) for item in context],
     )

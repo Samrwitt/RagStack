@@ -60,7 +60,7 @@ Suggested tests:
 
 ## Phase 8 - Reranking
 
-Status: **in progress**.
+Status: **complete**. Includes a reranker provider boundary, deterministic local reranker, candidate-set reranking, score preservation, request-level enablement, and token-budgeted context selection.
 
 Goal: rerank retrieved candidates before context construction while preserving provenance and exposing scores for debugging/evaluation.
 
@@ -84,6 +84,8 @@ Suggested tests:
 - Integration smoke test for hybrid search with reranking enabled.
 
 ## Phase 9 - RAG Generation
+
+Status: **complete**. Includes an LLM provider boundary, deterministic grounded extractive provider, citation resolution, insufficient-evidence handling, conversation-aware retrieval query construction, context selection integration, and a chat endpoint.
 
 Goal: answer from retrieved context with citations, clear insufficient-evidence behavior, and conversation-aware retrieval.
 

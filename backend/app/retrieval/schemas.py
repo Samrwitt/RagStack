@@ -18,6 +18,8 @@ class SearchRequest(BaseModel):
     language: str | None = None
     user_id: str | None = None
     group_ids: list[str] = Field(default_factory=list)
+    rerank: bool = False
+    context_token_budget: int | None = Field(default=None, ge=1, le=32000)
 
 
 class SearchHitRead(BaseModel):
@@ -40,3 +42,4 @@ class SearchResponse(BaseModel):
     query: str
     mode: str
     hits: list[SearchHitRead]
+    context: list[SearchHitRead] = Field(default_factory=list)

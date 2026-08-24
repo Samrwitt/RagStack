@@ -37,6 +37,8 @@ class RetrievalRequest:
     mode: RetrievalMode = RetrievalMode.HYBRID
     top_k: int = 10
     candidate_k: int = 50
+    rerank: bool = False
+    context_token_budget: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -54,3 +56,9 @@ class RetrievalHit:
     section: str | None
     metadata: dict
     scores: dict[str, float] = field(default_factory=dict)
+
+
+@dataclass(frozen=True, slots=True)
+class SelectedContext:
+    hit: RetrievalHit
+    token_count: int

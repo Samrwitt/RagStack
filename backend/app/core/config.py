@@ -78,6 +78,12 @@ class Settings(BaseSettings):
     embedding_retry_base_seconds: float = 0.05
     embedding_version: int = 1
     qdrant_collection: str = "corpusforge_chunks"
+    reranker_provider: str = "lexical_overlap"
+    reranker_enabled: bool = False
+    reranker_candidate_k: int = 50
+    context_token_budget: int = 1600
+    llm_provider: str = "extractive"
+    min_grounding_score: float = 0.01
 
     @computed_field  # type: ignore[prop-decorator]
     @property

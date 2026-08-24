@@ -117,7 +117,12 @@ class BM25Retriever:
             source_url=document.source_url,
             page=chunk.page,
             section=chunk.section,
-            metadata={**(document.extra_metadata or {}), **(chunk.extra or {})},
+            metadata={
+                **(document.extra_metadata or {}),
+                **(chunk.extra or {}),
+                "parent_chunk_id": str(chunk.parent_chunk_id) if chunk.parent_chunk_id else None,
+                "token_count": chunk.token_count,
+            },
             scores={"bm25": score},
         )
 

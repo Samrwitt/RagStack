@@ -76,8 +76,8 @@ See [docs/architecture.md](docs/architecture.md) for package layout, tenancy, an
 | 5 | Chunking: fixed, recursive, heading-aware, parent-child strategies | **Complete** |
 | 6 | Embeddings & vector index: provider abstraction, batching, retries, Qdrant collections, metadata, re-embedding | In progress |
 | 7 | Search: dense retrieval, BM25, hybrid + RRF, metadata filters, ACL filtering | **Complete** |
-| 8 | Reranking: provider abstraction, candidate sizing, score tracking, context selection | In progress |
-| 9 | RAG generation: LLM abstraction, grounded answers, citations, insufficient-evidence handling, conversation-aware retrieval | Planned |
+| 8 | Reranking: provider abstraction, candidate sizing, score tracking, context selection | **Complete** |
+| 9 | RAG generation: LLM abstraction, grounded answers, citations, insufficient-evidence handling, conversation-aware retrieval | **Complete** |
 | 10 | Connectors: website crawler, GitHub, PostgreSQL, REST API, Google Drive | Planned |
 | 11 | Evaluation: datasets, Recall@K / MRR / nDCG, groundedness, citation eval, experiment comparison | Planned |
 | 12 | Frontend: Next.js dashboard for overview, sources, documents, chat, retrieval debugger, evaluation, jobs, settings | Planned |

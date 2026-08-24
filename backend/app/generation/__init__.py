@@ -1,5 +1,13 @@
-"""Grounded LLM generation with citations and injection-resistant prompts.
+"""Grounded RAG generation."""
 
-Phase 9 implements provider abstraction, conversation-aware retrieval, and
-insufficient-evidence behavior.
-"""
+from app.generation.models import ChatMessage, Citation, EvidenceStatus, GroundedAnswer
+from app.generation.service import GenerationService, conversation_retrieval_query
+
+__all__ = [
+    "ChatMessage",
+    "Citation",
+    "EvidenceStatus",
+    "GenerationService",
+    "GroundedAnswer",
+    "conversation_retrieval_query",
+]
