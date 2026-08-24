@@ -73,7 +73,8 @@ See [docs/architecture.md](docs/architecture.md) for package layout, tenancy, an
 | 2 | Ingestion control plane: sources, canonical documents, hashing, versioning, state machine | **Complete** |
 | 3 | Parsing: TXT, Markdown, HTML, DOCX, PDF structured blocks, parser versioning, OCR fallback | **Complete** |
 | 4 | Normalization & dedup: Unicode/whitespace, boilerplate, language, exact + near duplicates | **Complete** |
-| 5–13 | Chunking through production hardening (frontend, evaluation, RBAC) | Planned |
+| 5 | Chunking: fixed, recursive, heading-aware, parent-child strategies | **Complete** |
+| 6–13 | Embeddings through production hardening (frontend, evaluation, RBAC) | Planned |
 
 ## Local development
 

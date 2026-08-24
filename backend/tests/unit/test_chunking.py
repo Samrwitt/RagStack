@@ -28,7 +28,8 @@ def test_recursive_prefers_paragraph_boundaries() -> None:
     )
     chunks = chunk_recursive(text, chunk_size=20, overlap=2)
     assert len(chunks) >= 2
-    assert all(c.metadata.get("split") in {"paragraph", "sentence", "token", "whole", "line"} for c in chunks)
+    allowed = {"paragraph", "sentence", "token", "whole", "line"}
+    assert all(c.metadata.get("split") in allowed for c in chunks)
     joined = " ".join(c.text for c in chunks)
     assert "annual leave" in joined
     assert "carry-over" in joined
@@ -40,7 +41,12 @@ def test_heading_aware_keeps_section_metadata() -> None:
         BlockInput(1, "heading", "Leave", heading_level=2, section="Leave"),
         BlockInput(2, "paragraph", "Employees receive 22 days annual leave.", section="Leave"),
         BlockInput(3, "heading", "Remote work", heading_level=2, section="Remote work"),
-        BlockInput(4, "paragraph", "Employees may work remotely two days each week.", section="Remote work"),
+        BlockInput(
+            4,
+            "paragraph",
+            "Employees may work remotely two days each week.",
+            section="Remote work",
+        ),
         BlockInput(5, "table", "| Day | Cap |\n| --- | --- |\n| Mon | 2 |", section="Remote work"),
     ]
     result = chunk_heading_aware(blocks, chunk_size=64, overlap=8)

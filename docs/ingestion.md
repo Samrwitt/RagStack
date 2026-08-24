@@ -1,6 +1,6 @@
 # Ingestion
 
-Status: **Phase 4 implemented** (fetch through normalize and duplicate recording). Chunking starts in Phase 5.
+Status: **Phase 5 implemented** (fetch through normalize and duplicate recording). Embedding starts in Phase 6.
 
 ## Goals
 
@@ -22,7 +22,7 @@ upload / discover
   → unchanged? SKIPPED_UNCHANGED (no new version)
   → changed? store raw/vN, version += 1, state FETCHED
   → PARSING → PARSED (structured blocks)
-  → NORMALIZING → NORMALIZED (clean text, language, duplicates)
+  → NORMALIZING → NORMALIZED → CHUNKING → CHUNKED
 ```
 
 Identical bytes at submit time never enqueue a worker. A **reprocess** job replays stored raw and re-parses even when the hash is unchanged (parser upgrades).
@@ -108,4 +108,4 @@ Omit `X-Organization-Id` in development; the API bootstraps the Acme Systems ten
 
 See [parsing.md](parsing.md) for parser versioning, block types, and OCR policy.
 
-See [normalization.md](normalization.md) for cleaning, language, and duplicate policy.
+See [normalization.md](normalization.md) for cleaning/dedup and [chunking.md](chunking.md) for strategies.

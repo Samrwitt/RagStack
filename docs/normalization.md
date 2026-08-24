@@ -1,6 +1,6 @@
 # Normalization and deduplication
 
-Status: **Phase 4 implemented**. After parse, the same job runs `PARSED → NORMALIZING → NORMALIZED`. Chunking starts in Phase 5.
+Status: **Phase 4 implemented**. After parse, the same job runs `PARSED → NORMALIZING → NORMALIZED`. The same job then chunks (Phase 5).
 
 ## Goals
 
