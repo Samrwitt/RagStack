@@ -1,4 +1,5 @@
-"""Index writes, version-aware replacement, and deletion propagation.
+"""Vector index helpers."""
 
-Phase 6/7 persist dense and sparse vectors with ACL metadata.
-"""
+from app.indexing.qdrant import QdrantIndexer, VectorDimensionMismatch, VectorPoint
+
+__all__ = ["QdrantIndexer", "VectorDimensionMismatch", "VectorPoint"]

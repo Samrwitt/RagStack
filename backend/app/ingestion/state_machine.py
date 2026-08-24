@@ -78,7 +78,14 @@ _ALLOWED: dict[DocumentState, frozenset[DocumentState]] = {
         {DocumentState.INDEXED, DocumentState.FAILED, DocumentState.DELETED}
     ),
     DocumentState.INDEXED: frozenset(
-        {DocumentState.FETCHING, DocumentState.PARSING, DocumentState.FAILED, DocumentState.DELETED}
+        {
+            DocumentState.FETCHING,
+            DocumentState.PARSING,
+            DocumentState.EMBEDDING,
+            DocumentState.INDEXING,
+            DocumentState.FAILED,
+            DocumentState.DELETED,
+        }
     ),
     DocumentState.FAILED: frozenset(
         {
@@ -86,6 +93,8 @@ _ALLOWED: dict[DocumentState, frozenset[DocumentState]] = {
             DocumentState.PARSING,
             DocumentState.NORMALIZING,
             DocumentState.CHUNKING,
+            DocumentState.EMBEDDING,
+            DocumentState.INDEXING,
             DocumentState.DELETED,
         }
     ),

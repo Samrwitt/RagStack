@@ -9,6 +9,7 @@ from app.ingestion.errors import NotFoundError
 from app.ingestion.service import IngestionService
 from app.parsers.errors import PermanentParseError
 from app.workers.celery_app import celery_app
+from app.workers.embedding import embed_document
 
 logger = get_logger(__name__)
 
@@ -21,6 +22,8 @@ def process_ingestion_job(self: Any, job_id: str) -> dict[str, str | bool | int]
         try:
             outcome = service.process_job(UUID(job_id))
             session.commit()
+            if not outcome.unchanged:
+                embed_document.delay(str(outcome.document.id))
         except PermanentParseError:
             session.commit()
             logger.exception("ingestion.job_permanent_failure", job_id=job_id)

@@ -124,6 +124,13 @@ class DocumentVersion(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     chunked_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    embedding_provider: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    embedding_model: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    embedding_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    embedding_dimension: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    embedded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    indexed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    qdrant_collection: Mapped[str | None] = mapped_column(String(128), nullable=True)
 
     document: Mapped[Document] = relationship(back_populates="versions")
     blocks: Mapped[list[DocumentBlock]] = relationship(

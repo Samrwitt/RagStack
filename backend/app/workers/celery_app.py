@@ -17,7 +17,7 @@ def create_celery() -> Celery:
         "corpusforge",
         broker=settings.celery_broker_url,
         backend=settings.celery_result_backend,
-        include=["app.workers.tasks", "app.workers.ingestion"],
+        include=["app.workers.tasks", "app.workers.ingestion", "app.workers.embedding"],
     )
     app.conf.update(
         task_serializer="json",
@@ -39,6 +39,7 @@ def create_celery() -> Celery:
         task_routes={
             "app.workers.tasks.ping": {"queue": "default"},
             "app.workers.ingestion.process_ingestion_job": {"queue": "ingestion"},
+            "app.workers.embedding.embed_document": {"queue": "embedding"},
         },
         broker_connection_retry_on_startup=True,
         result_expires=3600,

@@ -8,8 +8,14 @@ from dataclasses import dataclass
 from io import BytesIO
 from urllib.parse import urlparse
 
-from minio import Minio
-from minio.error import S3Error
+try:
+    from minio import Minio
+    from minio.error import S3Error
+except ModuleNotFoundError:  # pragma: no cover - exercised when optional deps are absent
+    Minio = None  # type: ignore[assignment]
+
+    class S3Error(Exception):  # type: ignore[no-redef]
+        code = ""
 
 from app.core.config import Settings, get_settings
 
@@ -57,6 +63,8 @@ class ObjectStorage:
     """
 
     def __init__(self, settings: Settings | None = None) -> None:
+        if Minio is None:
+            raise RuntimeError("minio is not installed")
         cfg = settings or get_settings()
         host, parsed_secure = parse_s3_endpoint(cfg.s3_endpoint_url)
         secure = cfg.s3_use_tls if cfg.s3_secure is not None else parsed_secure

@@ -9,13 +9,19 @@ import logging
 import sys
 from typing import Any
 
-import structlog
+try:
+    import structlog
+except ModuleNotFoundError:  # pragma: no cover - minimal unit-test environments
+    structlog = None  # type: ignore[assignment]
 
 from app.core.config import Settings
 
 
 def configure_logging(settings: Settings) -> None:
     """Configure structlog + stdlib logging once per process."""
+    if structlog is None:
+        logging.basicConfig(level=settings.log_level.upper(), stream=sys.stdout)
+        return
     timestamper = structlog.processors.TimeStamper(fmt="iso", utc=True)
     shared_processors: list[Any] = [
         structlog.contextvars.merge_contextvars,
@@ -62,6 +68,8 @@ def configure_logging(settings: Settings) -> None:
         logging.getLogger(noisy).setLevel(logging.WARNING)
 
 
-def get_logger(name: str | None = None) -> structlog.stdlib.BoundLogger:
+def get_logger(name: str | None = None) -> Any:
+    if structlog is None:
+        return logging.getLogger(name)
     logger: structlog.stdlib.BoundLogger = structlog.get_logger(name)
     return logger

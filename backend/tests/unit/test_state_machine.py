@@ -31,6 +31,15 @@ def test_chunked_can_rechunk() -> None:
     assert can_transition(DocumentState.CHUNKED, DocumentState.PARSING)
 
 
+def test_embedding_and_indexing_recover_from_failure() -> None:
+    assert can_transition(DocumentState.FAILED, DocumentState.EMBEDDING)
+    assert can_transition(DocumentState.FAILED, DocumentState.INDEXING)
+
+
+def test_indexed_can_reembed() -> None:
+    assert can_transition(DocumentState.INDEXED, DocumentState.EMBEDDING)
+
+
 def test_fetched_can_refetch_on_content_change() -> None:
     assert can_transition(DocumentState.FETCHED, DocumentState.FETCHING)
 

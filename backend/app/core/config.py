@@ -70,6 +70,14 @@ class Settings(BaseSettings):
     chunk_size: int = 256
     chunk_overlap: int = 32
     parent_chunk_max_tokens: int = 1024
+    embedding_provider: str = "deterministic"
+    embedding_model: str = "deterministic-v1"
+    embedding_dimension: int = 128
+    embedding_batch_size: int = 32
+    embedding_max_retries: int = 3
+    embedding_retry_base_seconds: float = 0.05
+    embedding_version: int = 1
+    qdrant_collection: str = "corpusforge_chunks"
 
     @computed_field  # type: ignore[prop-decorator]
     @property

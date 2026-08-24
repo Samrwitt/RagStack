@@ -4,16 +4,23 @@ Collections are not created here. Phase 6 owns vector schema, named vectors,
 and embedding-model compatibility. Phase 1 only verifies connectivity.
 """
 
-from qdrant_client import QdrantClient
+from typing import Any
+
+try:
+    from qdrant_client import QdrantClient
+except ModuleNotFoundError:  # pragma: no cover - exercised when optional deps are absent
+    QdrantClient = None  # type: ignore[assignment]
 
 from app.core.config import Settings, get_settings
 
-_client: QdrantClient | None = None
+_client: Any | None = None
 
 
-def get_qdrant_client(settings: Settings | None = None) -> QdrantClient:
+def get_qdrant_client(settings: Settings | None = None) -> Any:
     global _client
     if _client is None:
+        if QdrantClient is None:
+            raise RuntimeError("qdrant-client is not installed")
         cfg = settings or get_settings()
         _client = QdrantClient(url=cfg.qdrant_url, api_key=cfg.qdrant_api_key_or_none)
     return _client
