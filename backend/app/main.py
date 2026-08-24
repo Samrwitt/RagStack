@@ -17,7 +17,7 @@ from app.core.bootstrap import ensure_dev_tenant
 from app.core.config import get_settings
 from app.core.db import dispose_engines, get_sync_session_factory
 from app.core.logging import configure_logging, get_logger
-from app.core.middleware import RequestIdMiddleware
+from app.core.middleware import RateLimitMiddleware, RequestIdMiddleware
 from app.core.qdrant import close_qdrant
 from app.core.redis import close_redis
 
@@ -60,6 +60,7 @@ def create_app() -> FastAPI:
         openapi_url="/openapi.json",
     )
     application.add_middleware(RequestIdMiddleware)
+    application.add_middleware(RateLimitMiddleware)
     application.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origin_list,

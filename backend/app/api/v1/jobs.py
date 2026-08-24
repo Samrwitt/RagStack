@@ -38,6 +38,32 @@ def get_job(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
 
+@router.get("/dlq/failed", response_model=list[JobRead])
+def list_dead_letter_jobs(
+    org: Annotated[Organization, Depends(get_current_organization)],
+    service: Annotated[IngestionService, Depends(get_ingestion_service)],
+) -> list[JobRead]:
+    return [JobRead.model_validate(item) for item in service.list_dead_letter_jobs(org.id)]
+
+
+@router.post("/dlq/{job_id}/replay", response_model=UploadResult)
+def replay_dead_letter_job(
+    job_id: UUID,
+    org: Annotated[Organization, Depends(get_current_organization)],
+    service: Annotated[IngestionService, Depends(get_ingestion_service)],
+) -> UploadResult:
+    try:
+        outcome = service.replay_dead_letter_job(org.id, job_id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    enqueue_outcome(service.session, outcome)
+    return UploadResult(
+        unchanged=outcome.unchanged,
+        document=DocumentRead.model_validate(outcome.document),
+        job=JobRead.model_validate(outcome.job),
+    )
+
+
 @router.post("/{job_id}/retry", response_model=UploadResult)
 def retry_job(
     job_id: UUID,

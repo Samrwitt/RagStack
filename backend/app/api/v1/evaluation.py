@@ -39,7 +39,8 @@ def list_evaluation_runs(
     org: Annotated[Organization, Depends(get_current_organization)],
     session: Annotated[Session, Depends(get_sync_session)],
 ) -> list[EvaluationRunRead]:
-    return [EvaluationRunRead.model_validate(item) for item in EvaluationService(session).list_runs(org.id)]
+    runs = EvaluationService(session).list_runs(org.id)
+    return [EvaluationRunRead.model_validate(item) for item in runs]
 
 
 @router.get("/runs/{run_id}", response_model=EvaluationRunRead)
@@ -50,7 +51,10 @@ def get_evaluation_run(
 ) -> EvaluationRunRead:
     run = EvaluationService(session).get_run(org.id, run_id)
     if run is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="evaluation run not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="evaluation run not found",
+        )
     return EvaluationRunRead.model_validate(run)
 
 
@@ -60,4 +64,5 @@ def compare_evaluation_runs(
     org: Annotated[Organization, Depends(get_current_organization)],
     session: Annotated[Session, Depends(get_sync_session)],
 ) -> EvaluationCompareResponse:
-    return EvaluationCompareResponse(rows=EvaluationService(session).compare(org.id, payload.run_ids))
+    rows = EvaluationService(session).compare(org.id, payload.run_ids)
+    return EvaluationCompareResponse(rows=rows)

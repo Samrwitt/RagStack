@@ -19,3 +19,9 @@ GENERATION_LATENCY_SECONDS = "corpusforge_generation_latency_seconds"
 GENERATION_INPUT_TOKENS = "corpusforge_generation_input_tokens_total"
 GENERATION_OUTPUT_TOKENS = "corpusforge_generation_output_tokens_total"
 GENERATION_FAILURES = "corpusforge_generation_failures_total"
+RATE_LIMIT_REJECTIONS = "corpusforge_rate_limit_rejections_total"
+DLQ_JOBS = "corpusforge_dlq_jobs_total"
+
+
+def render_prometheus(metrics: dict[str, float]) -> str:
+    return "\n".join(f"{name} {value}" for name, value in sorted(metrics.items())) + "\n"

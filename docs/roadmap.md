@@ -138,6 +138,8 @@ Suggested tests:
 
 ## Phase 11 - Evaluation
 
+Status: **complete**. Includes JSON eval datasets, retrieval metrics, groundedness and citation metrics, persisted evaluation runs, run listing/details, and experiment comparison.
+
 Goal: make retrieval and answer quality measurable and comparable across configurations.
 
 Deliverables:
@@ -161,6 +163,8 @@ Suggested tests:
 - Integration tests for a small seeded corpus with known relevant documents.
 
 ## Phase 12 - Frontend
+
+Status: **complete**. Includes a Next.js dashboard scaffold with Overview, Sources, Documents, Chat, Retrieval Debugger, Evaluation, Jobs, and Settings surfaces.
 
 Goal: provide a Next.js dashboard for operating, debugging, and evaluating the platform.
 
@@ -187,6 +191,8 @@ Suggested tests:
 - End-to-end tests for source creation, document inspection, chat with citations, and retrieval debugging.
 
 ## Phase 13 - Production Hardening
+
+Status: **complete**. Includes DLQ listing/replay primitives, RBAC policy helpers, rate limiting middleware, metrics endpoint, secret redaction, public URL validation, and security-focused unit tests.
 
 Goal: make the system safer to operate with stronger failure handling, observability, authorization, and abuse controls.
 

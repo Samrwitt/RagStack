@@ -79,9 +79,9 @@ See [docs/architecture.md](docs/architecture.md) for package layout, tenancy, an
 | 8 | Reranking: provider abstraction, candidate sizing, score tracking, context selection | **Complete** |
 | 9 | RAG generation: LLM abstraction, grounded answers, citations, insufficient-evidence handling, conversation-aware retrieval | **Complete** |
 | 10 | Connectors: website crawler, GitHub, PostgreSQL, REST API, Google Drive | **Complete** |
-| 11 | Evaluation: datasets, Recall@K / MRR / nDCG, groundedness, citation eval, experiment comparison | Planned |
-| 12 | Frontend: Next.js dashboard for overview, sources, documents, chat, retrieval debugger, evaluation, jobs, settings | Planned |
-| 13 | Production hardening: DLQ, richer retries, queue monitoring, metrics, RBAC, ACL enforcement, rate limiting, security tests | Planned |
+| 11 | Evaluation: datasets, Recall@K / MRR / nDCG, groundedness, citation eval, experiment comparison | **Complete** |
+| 12 | Frontend: Next.js dashboard for overview, sources, documents, chat, retrieval debugger, evaluation, jobs, settings | **Complete** |
+| 13 | Production hardening: DLQ, richer retries, queue monitoring, metrics, RBAC, ACL enforcement, rate limiting, security tests | **Complete** |
 
 See [docs/roadmap.md](docs/roadmap.md) for the implementation backlog and acceptance checks for Phases 6-13.
 

@@ -84,6 +84,9 @@ class Settings(BaseSettings):
     context_token_budget: int = 1600
     llm_provider: str = "extractive"
     min_grounding_score: float = 0.01
+    rate_limit_enabled: bool = True
+    rate_limit_requests: int = 120
+    rate_limit_window_seconds: int = 60
 
     @computed_field  # type: ignore[prop-decorator]
     @property

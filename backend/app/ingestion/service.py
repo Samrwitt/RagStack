@@ -248,6 +248,15 @@ class IngestionService:
         stmt = stmt.order_by(IngestionJob.created_at.desc())
         return list(self.session.scalars(stmt).all())
 
+    def list_dead_letter_jobs(self, organization_id: UUID) -> list[IngestionJob]:
+        return self.list_jobs(organization_id, status=JobStatus.FAILED.value)
+
+    def replay_dead_letter_job(self, organization_id: UUID, job_id: UUID) -> IngestOutcome:
+        job = self.get_job(organization_id, job_id)
+        if job.status != JobStatus.FAILED.value:
+            raise NotFoundError("job is not in the dead-letter queue")
+        return self.retry_job(organization_id, job_id)
+
     def get_job(self, organization_id: UUID, job_id: UUID) -> IngestionJob:
         job = self.session.get(IngestionJob, job_id)
         if job is None:
