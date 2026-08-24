@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass
+from typing import Any
 
 try:
     from qdrant_client import models as qmodels
@@ -17,6 +18,24 @@ except ModuleNotFoundError:  # pragma: no cover - lets unit tests use fake clien
 
     class _PayloadSchemaType:
         KEYWORD = "keyword"
+
+    @dataclass(frozen=True, slots=True)
+    class _MatchValue:
+        value: object
+
+    @dataclass(frozen=True, slots=True)
+    class _MatchAny:
+        any: list[object]
+
+    @dataclass(frozen=True, slots=True)
+    class _FieldCondition:
+        key: str
+        match: object
+
+    @dataclass(frozen=True, slots=True)
+    class _Filter:
+        must: list[object] | None = None
+        should: list[object] | None = None
 
     @dataclass(frozen=True, slots=True)
     class _VectorParams:
@@ -35,6 +54,10 @@ except ModuleNotFoundError:  # pragma: no cover - lets unit tests use fake clien
 
     class qmodels:  # type: ignore[no-redef]
         Distance = _Distance
+        FieldCondition = _FieldCondition
+        Filter = _Filter
+        MatchAny = _MatchAny
+        MatchValue = _MatchValue
         PayloadSchemaType = _PayloadSchemaType
         VectorParams = _VectorParams
         PointStruct = _PointStruct
@@ -52,6 +75,13 @@ class VectorDimensionMismatch(ValueError):
 class VectorPoint:
     id: str
     vector: list[float]
+    payload: dict
+
+
+@dataclass(frozen=True, slots=True)
+class VectorSearchResult:
+    id: str
+    score: float
     payload: dict
 
 
@@ -96,6 +126,41 @@ class QdrantIndexer:
             collection_name=self.collection_name,
             points_selector=qmodels.PointIdsList(points=ids),
         )
+
+    def search(
+        self,
+        *,
+        vector: list[float],
+        query_filter: Any,
+        limit: int,
+    ) -> list[VectorSearchResult]:
+        if limit <= 0:
+            return []
+        if hasattr(self.client, "search"):
+            results = self.client.search(
+                collection_name=self.collection_name,
+                query_vector=vector,
+                query_filter=query_filter,
+                limit=limit,
+                with_payload=True,
+            )
+        else:
+            response = self.client.query_points(
+                collection_name=self.collection_name,
+                query=vector,
+                query_filter=query_filter,
+                limit=limit,
+                with_payload=True,
+            )
+            results = response.points
+        return [
+            VectorSearchResult(
+                id=str(item.id),
+                score=float(item.score),
+                payload=dict(item.payload or {}),
+            )
+            for item in results
+        ]
 
     def _collection_exists(self) -> bool:
         if hasattr(self.client, "collection_exists"):

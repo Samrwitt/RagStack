@@ -1,6 +1,7 @@
 """Dense, sparse, and hybrid retrieval."""
 
 from app.retrieval.bm25 import BM25Retriever
+from app.retrieval.dense import DenseRetriever
 from app.retrieval.models import (
     ACLContext,
     RetrievalFilters,
@@ -14,6 +15,7 @@ from app.retrieval.service import RetrievalService
 __all__ = [
     "ACLContext",
     "BM25Retriever",
+    "DenseRetriever",
     "RetrievalFilters",
     "RetrievalHit",
     "RetrievalMode",

@@ -88,6 +88,7 @@ class FakeQdrantClient:
         self.created = False
         self.indexes: list[str] = []
         self.deleted: list[str] = []
+        self.search_filter = None
 
     def collection_exists(self, collection_name: str) -> bool:
         return self.vector_size is not None
@@ -108,6 +109,23 @@ class FakeQdrantClient:
 
     def delete(self, collection_name: str, points_selector) -> None:
         self.deleted.extend(points_selector.points)
+
+    def search(
+        self,
+        collection_name: str,
+        query_vector: list[float],
+        query_filter,
+        limit: int,
+        with_payload: bool,
+    ) -> list[SimpleNamespace]:
+        self.search_filter = query_filter
+        return [
+            SimpleNamespace(
+                id="point-1",
+                score=0.75,
+                payload={"chunk_id": "00000000-0000-0000-0000-000000000001"},
+            )
+        ][:limit]
 
 
 def test_qdrant_indexer_creates_collection_and_payload_indexes() -> None:
@@ -137,6 +155,17 @@ def test_qdrant_indexer_deletes_points() -> None:
     indexer.delete_points(["a", "b"])
 
     assert client.deleted == ["a", "b"]
+
+
+def test_qdrant_indexer_search_normalizes_results() -> None:
+    client = FakeQdrantClient(vector_size=8)
+    indexer = QdrantIndexer(client=client, settings=Settings(qdrant_collection="test_chunks"))
+
+    results = indexer.search(vector=[1.0, 0.0], query_filter=None, limit=1)
+
+    assert results[0].id == "point-1"
+    assert results[0].score == 0.75
+    assert results[0].payload["chunk_id"] == "00000000-0000-0000-0000-000000000001"
 
 
 def test_needs_reembedding_detects_provider_model_and_version_drift() -> None:
