@@ -6,6 +6,7 @@ from collections.abc import AsyncIterator
 from html.parser import HTMLParser
 from typing import Any
 from urllib.parse import urljoin, urlparse
+from xml.etree import ElementTree
 
 import httpx
 
@@ -45,6 +46,7 @@ class WebsiteConnector:
         self.start_urls = [str(item) for item in config.get("start_urls", [])]
         if not self.start_urls and config.get("base_url"):
             self.start_urls = [str(config["base_url"])]
+        self.sitemap_urls = [str(item) for item in config.get("sitemap_urls", [])]
         self.max_pages = int(config.get("max_pages", 100))
         self.same_domain = bool(config.get("same_domain", True))
         self._pages: dict[str, tuple[str, bytes, str]] = {}
@@ -59,6 +61,10 @@ class WebsiteConnector:
         allowed_hosts = {urlparse(url).netloc for url in self.start_urls}
         timeout = float(self.config.get("timeout_seconds", 30))
         async with httpx.AsyncClient(timeout=timeout) as client:
+            for sitemap_url in self.sitemap_urls:
+                for url in await _sitemap_urls(client, sitemap_url):
+                    if url not in seen and url not in queue:
+                        queue.append(url)
             while queue and len(self._pages) < self.max_pages:
                 url = queue.pop(0)
                 if url in seen:
@@ -107,3 +113,14 @@ class WebsiteConnector:
 
     async def checkpoint(self) -> dict[str, Any]:
         return self._checkpoint
+
+
+async def _sitemap_urls(client: httpx.AsyncClient, sitemap_url: str) -> list[str]:
+    response = await client.get(sitemap_url)
+    response.raise_for_status()
+    root = ElementTree.fromstring(response.content)
+    urls: list[str] = []
+    for loc in root.iter():
+        if loc.tag.endswith("loc") and loc.text:
+            urls.append(loc.text.strip())
+    return urls

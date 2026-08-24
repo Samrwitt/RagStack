@@ -23,6 +23,7 @@ class RestApiConnector:
         self.title_field = str(config.get("title_field", "title"))
         self.url_field = str(config.get("url_field", "url"))
         self.updated_at_field = str(config.get("updated_at_field", "updated_at"))
+        self.deleted_field = str(config.get("deleted_field", "deleted"))
         self.next_cursor_field = str(config.get("next_cursor_field", "next_cursor"))
         self.cursor_param = str(config.get("cursor_param", "cursor"))
         self.items_field = str(config.get("items_field", "items"))
@@ -59,6 +60,7 @@ class RestApiConnector:
                         mime_type=self.mime_type,
                         source_url=item.get(self.url_field),
                         updated_at=_parse_datetime(item.get(self.updated_at_field)),
+                        deleted=bool(item.get(self.deleted_field, False)),
                         metadata=metadata_with_connector("rest_api", {"raw": item}),
                     )
                 cursor = payload.get(self.next_cursor_field) if isinstance(payload, dict) else None

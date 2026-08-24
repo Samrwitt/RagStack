@@ -9,7 +9,9 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 
 from app.connectors.registry import build_connector
-from app.ingestion.service import IngestOutcome, IngestionService
+from app.ingestion.errors import NotFoundError
+from app.ingestion.identity import normalize_source_id, stable_document_id
+from app.ingestion.service import IngestionService, IngestOutcome
 from app.models.enums import SourceStatus
 from app.models.source import SourceConnection
 
@@ -46,6 +48,16 @@ class ConnectorSyncService:
                 break
             outcome.discovered += 1
             if item.deleted:
+                document_id = stable_document_id(
+                    organization_id,
+                    source.source_type,
+                    source.id,
+                    normalize_source_id(item.source_id),
+                )
+                try:
+                    self.ingestion.delete_document(organization_id, document_id)
+                except NotFoundError:
+                    pass
                 outcome.deleted += 1
                 continue
             content = await connector.fetch(item.source_id)

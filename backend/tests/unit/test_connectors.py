@@ -71,6 +71,7 @@ async def test_rest_api_connector_fetches_discovered_items(monkeypatch) -> None:
                             "id": "policy-1",
                             "title": "Policy",
                             "content": "Employees receive 22 leave days.",
+                            "deleted": True,
                         }
                     ],
                     "next_cursor": None,
@@ -90,6 +91,7 @@ async def test_rest_api_connector_fetches_discovered_items(monkeypatch) -> None:
     fetched = await connector.fetch("policy-1")
 
     assert discovered[0].source_id == "policy-1"
+    assert discovered[0].deleted is True
     assert fetched.data == b"Employees receive 22 leave days."
     assert fetched.permissions.allowed_groups == ["hr"]
     assert (await connector.checkpoint())["cursor"] is None

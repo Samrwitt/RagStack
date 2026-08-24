@@ -11,7 +11,6 @@ import httpx
 from app.connectors.base import metadata_with_connector, permissions_from_config
 from app.connectors.protocol import ConnectorPermission, DiscoveredItem, FetchedContent
 
-
 GOOGLE_DOC_EXPORTS = {
     "application/vnd.google-apps.document": ("text/markdown", "text/markdown"),
     "application/vnd.google-apps.spreadsheet": ("text/csv", "text/csv"),
@@ -35,7 +34,8 @@ class GoogleDriveConnector:
         query = "trashed = false"
         if self.folder_id:
             query += f" and '{self.folder_id}' in parents"
-        async with httpx.AsyncClient(timeout=float(self.config.get("timeout_seconds", 30))) as client:
+        timeout = float(self.config.get("timeout_seconds", 30))
+        async with httpx.AsyncClient(timeout=timeout) as client:
             while True:
                 params = {
                     "q": query,
@@ -44,7 +44,11 @@ class GoogleDriveConnector:
                 }
                 if page_token:
                     params["pageToken"] = page_token
-                response = await client.get(f"{self.api_base}/files", params=params, headers=self._headers())
+                response = await client.get(
+                    f"{self.api_base}/files",
+                    params=params,
+                    headers=self._headers(),
+                )
                 response.raise_for_status()
                 payload = response.json()
                 for file in payload.get("files", []):
@@ -70,11 +74,16 @@ class GoogleDriveConnector:
     async def fetch(self, source_id: str) -> FetchedContent:
         file = self._files[source_id]
         mime_type = str(file["mimeType"])
-        async with httpx.AsyncClient(timeout=float(self.config.get("timeout_seconds", 30))) as client:
+        timeout = float(self.config.get("timeout_seconds", 30))
+        async with httpx.AsyncClient(timeout=timeout) as client:
             if mime_type in GOOGLE_DOC_EXPORTS:
                 export_mime, stored_mime = GOOGLE_DOC_EXPORTS[mime_type]
                 url = f"{self.api_base}/files/{source_id}/export"
-                response = await client.get(url, params={"mimeType": export_mime}, headers=self._headers())
+                response = await client.get(
+                    url,
+                    params={"mimeType": export_mime},
+                    headers=self._headers(),
+                )
                 final_mime = stored_mime
             else:
                 url = f"{self.api_base}/files/{source_id}"
