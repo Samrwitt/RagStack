@@ -56,6 +56,11 @@ class Settings(BaseSettings):
     qdrant_api_key: str = ""
 
     max_upload_size_bytes: int = 50 * 1024 * 1024
+    allowed_upload_mime_types: str = (
+        "text/plain,text/markdown,text/html,application/pdf,"
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    )
+    default_organization_id: str = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeee1"
     health_celery_timeout_seconds: float = 3.0
 
     @computed_field  # type: ignore[prop-decorator]

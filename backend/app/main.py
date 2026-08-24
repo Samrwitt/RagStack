@@ -13,8 +13,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from app import __version__
 from app.api.v1.health import liveness_payload
 from app.api.v1.router import api_router
+from app.core.bootstrap import ensure_dev_tenant
 from app.core.config import get_settings
-from app.core.db import dispose_engines
+from app.core.db import dispose_engines, get_sync_session_factory
 from app.core.logging import configure_logging, get_logger
 from app.core.middleware import RequestIdMiddleware
 from app.core.qdrant import close_qdrant
@@ -32,6 +33,11 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         env=settings.app_env,
         version=__version__,
     )
+    if settings.app_env == "development":
+        factory = get_sync_session_factory()
+        with factory() as session:
+            ensure_dev_tenant(session)
+            session.commit()
     yield
     await close_redis()
     close_qdrant()

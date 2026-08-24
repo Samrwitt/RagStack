@@ -1,5 +1,7 @@
-"""Ingestion control plane.
+"""Ingestion control plane: identity, hashing, jobs, and versioning."""
 
-Phase 2 implements canonical documents, stable IDs, hashing, versioning,
-state machine, and Celery-driven processing jobs.
-"""
+from app.ingestion.hashing import sha256_digest
+from app.ingestion.identity import stable_document_id
+from app.ingestion.service import IngestionService, IngestOutcome
+
+__all__ = ["IngestOutcome", "IngestionService", "sha256_digest", "stable_document_id"]

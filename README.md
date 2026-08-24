@@ -70,7 +70,7 @@ See [docs/architecture.md](docs/architecture.md) for package layout, tenancy, an
 | Phase | Scope | Status |
 | --- | --- | --- |
 | 1 | Foundation: FastAPI, PostgreSQL, Redis, Celery, MinIO, Qdrant, Docker Compose, Alembic, health checks | **Complete** |
-| 2 | Ingestion control plane: sources, canonical documents, hashing, versioning, state machine | Next |
+| 2 | Ingestion control plane: sources, canonical documents, hashing, versioning, state machine | **Complete** |
 | 3–13 | Parsing through production hardening (frontend, evaluation, RBAC) | Planned |
 
 ## Local development
