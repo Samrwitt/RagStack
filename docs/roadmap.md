@@ -111,6 +111,8 @@ Suggested tests:
 
 ## Phase 10 - Connectors
 
+Status: **complete**. Includes website, GitHub, PostgreSQL, REST API, and Google Drive connector implementations; connector registry; source sync jobs; checkpoint propagation; metadata/ACL normalization; changed-content enqueueing; and deleted-record handling.
+
 Goal: expand collection beyond local upload while preserving the same ingestion, versioning, and replay contracts.
 
 Deliverables:

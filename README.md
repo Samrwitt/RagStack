@@ -78,7 +78,7 @@ See [docs/architecture.md](docs/architecture.md) for package layout, tenancy, an
 | 7 | Search: dense retrieval, BM25, hybrid + RRF, metadata filters, ACL filtering | **Complete** |
 | 8 | Reranking: provider abstraction, candidate sizing, score tracking, context selection | **Complete** |
 | 9 | RAG generation: LLM abstraction, grounded answers, citations, insufficient-evidence handling, conversation-aware retrieval | **Complete** |
-| 10 | Connectors: website crawler, GitHub, PostgreSQL, REST API, Google Drive | Planned |
+| 10 | Connectors: website crawler, GitHub, PostgreSQL, REST API, Google Drive | **Complete** |
 | 11 | Evaluation: datasets, Recall@K / MRR / nDCG, groundedness, citation eval, experiment comparison | Planned |
 | 12 | Frontend: Next.js dashboard for overview, sources, documents, chat, retrieval debugger, evaluation, jobs, settings | Planned |
 | 13 | Production hardening: DLQ, richer retries, queue monitoring, metrics, RBAC, ACL enforcement, rate limiting, security tests | Planned |
@@ -139,6 +139,7 @@ pytest tests/unit -q
 - [Security](docs/security.md)
 - [Evaluation](docs/evaluation.md)
 - [Roadmap](docs/roadmap.md)
+- [Connectors](docs/connectors.md)
 - [Deployment](docs/deployment.md)
 
 ## Design principles

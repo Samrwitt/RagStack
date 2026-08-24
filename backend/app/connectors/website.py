@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncIterator
 from html.parser import HTMLParser
 from typing import Any
@@ -49,6 +50,7 @@ class WebsiteConnector:
         self.sitemap_urls = [str(item) for item in config.get("sitemap_urls", [])]
         self.max_pages = int(config.get("max_pages", 100))
         self.same_domain = bool(config.get("same_domain", True))
+        self.request_delay_seconds = float(config.get("request_delay_seconds", 0))
         self._pages: dict[str, tuple[str, bytes, str]] = {}
         self._checkpoint: dict[str, Any] = {}
 
@@ -69,6 +71,8 @@ class WebsiteConnector:
                 url = queue.pop(0)
                 if url in seen:
                     continue
+                if self.request_delay_seconds > 0:
+                    await asyncio.sleep(self.request_delay_seconds)
                 seen.add(url)
                 response = await client.get(url, follow_redirects=True)
                 response.raise_for_status()

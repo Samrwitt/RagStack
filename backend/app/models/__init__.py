@@ -6,6 +6,7 @@ from app.models.chunk import DocumentChunk
 from app.models.document import Document, DocumentVersion
 from app.models.duplicate import DocumentDuplicate
 from app.models.embedding import ChunkEmbedding
+from app.models.evaluation import EvaluationRun
 from app.models.enums import (
     DocumentState,
     DuplicateKind,
@@ -31,6 +32,7 @@ __all__ = [
     "DuplicateKind",
     "FailureKind",
     "ChunkEmbedding",
+    "EvaluationRun",
     "IngestionJob",
     "JobStatus",
     "JobType",

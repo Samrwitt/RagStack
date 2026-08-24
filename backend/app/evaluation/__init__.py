@@ -1,4 +1,6 @@
-"""RAG evaluation: retrieval metrics, groundedness, and experiment comparison.
+"""RAG evaluation: retrieval metrics, groundedness, and experiment comparison."""
 
-Phase 11 implements datasets, Recall@K/MRR/nDCG, and answer-level scores.
-"""
+from app.evaluation.metrics import mrr, ndcg_at_k, precision_at_k, recall_at_k
+from app.evaluation.service import EvaluationService
+
+__all__ = ["EvaluationService", "mrr", "ndcg_at_k", "precision_at_k", "recall_at_k"]

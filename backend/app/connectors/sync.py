@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import suppress
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from uuid import UUID
@@ -54,10 +55,8 @@ class ConnectorSyncService:
                     source.id,
                     normalize_source_id(item.source_id),
                 )
-                try:
+                with suppress(NotFoundError):
                     self.ingestion.delete_document(organization_id, document_id)
-                except NotFoundError:
-                    pass
                 outcome.deleted += 1
                 continue
             content = await connector.fetch(item.source_id)
