@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -10,7 +11,7 @@ from app.core.config import Settings
 from app.embeddings.batching import BatchEmbedder, batched
 from app.embeddings.models import EmbeddingInput, EmbeddingProviderInfo, EmbeddingVector
 from app.embeddings.providers import DeterministicEmbeddingProvider
-from app.embeddings.service import chunk_payload, stable_point_id
+from app.embeddings.service import EmbeddingService, chunk_payload, stable_point_id
 from app.indexing.qdrant import QdrantIndexer, VectorDimensionMismatch
 from app.models.chunk import DocumentChunk
 from app.models.document import Document, DocumentVersion
@@ -86,6 +87,7 @@ class FakeQdrantClient:
         self.vector_size = vector_size
         self.created = False
         self.indexes: list[str] = []
+        self.deleted: list[str] = []
 
     def collection_exists(self, collection_name: str) -> bool:
         return self.vector_size is not None
@@ -103,6 +105,9 @@ class FakeQdrantClient:
 
     def create_payload_index(self, collection_name: str, field_name: str, field_schema) -> None:
         self.indexes.append(field_name)
+
+    def delete(self, collection_name: str, points_selector) -> None:
+        self.deleted.extend(points_selector.points)
 
 
 def test_qdrant_indexer_creates_collection_and_payload_indexes() -> None:
@@ -123,6 +128,50 @@ def test_qdrant_indexer_rejects_dimension_mismatch() -> None:
 
     with pytest.raises(VectorDimensionMismatch):
         indexer.ensure_collection(vector_size=16)
+
+
+def test_qdrant_indexer_deletes_points() -> None:
+    client = FakeQdrantClient(vector_size=8)
+    indexer = QdrantIndexer(client=client, settings=Settings(qdrant_collection="test_chunks"))
+
+    indexer.delete_points(["a", "b"])
+
+    assert client.deleted == ["a", "b"]
+
+
+def test_needs_reembedding_detects_provider_model_and_version_drift() -> None:
+    provider = DeterministicEmbeddingProvider(Settings(embedding_dimension=8))
+    service = EmbeddingService(
+        session=None,
+        provider=provider,
+        indexer=QdrantIndexer(
+            client=FakeQdrantClient(vector_size=8),
+            settings=Settings(qdrant_collection="test_chunks"),
+        ),
+        settings=Settings(embedding_dimension=8),
+    )
+    current = DocumentVersion(
+        id=uuid4(),
+        document_id=uuid4(),
+        version_number=1,
+        content_hash="abc",
+        raw_object_key="raw/key",
+        size_bytes=10,
+        is_current=True,
+        retrieved_at=None,
+        chunk_count=2,
+        embedding_provider="deterministic",
+        embedding_model="different",
+        embedding_version=1,
+        embedding_dimension=8,
+        indexed_at=None,
+    )
+    stale = service.needs_reembedding(current)
+    current.embedding_model = "deterministic-v1"
+    current.indexed_at = datetime.now(UTC)
+
+    assert stale is True
+    assert service.needs_reembedding(current) is False
 
 
 def test_chunk_payload_contains_retrieval_and_acl_metadata() -> None:

@@ -29,11 +29,16 @@ except ModuleNotFoundError:  # pragma: no cover - lets unit tests use fake clien
         vector: list[float]
         payload: dict
 
+    @dataclass(frozen=True, slots=True)
+    class _PointIdsList:
+        points: list[str]
+
     class qmodels:  # type: ignore[no-redef]
         Distance = _Distance
         PayloadSchemaType = _PayloadSchemaType
         VectorParams = _VectorParams
         PointStruct = _PointStruct
+        PointIdsList = _PointIdsList
 
 from app.core.config import Settings, get_settings
 from app.core.qdrant import get_qdrant_client
@@ -82,6 +87,15 @@ class QdrantIndexer:
         if not qdrant_points:
             return
         self.client.upsert(collection_name=self.collection_name, points=qdrant_points)
+
+    def delete_points(self, point_ids: Iterable[str]) -> None:
+        ids = list(point_ids)
+        if not ids:
+            return
+        self.client.delete(
+            collection_name=self.collection_name,
+            points_selector=qmodels.PointIdsList(points=ids),
+        )
 
     def _collection_exists(self) -> bool:
         if hasattr(self.client, "collection_exists"):

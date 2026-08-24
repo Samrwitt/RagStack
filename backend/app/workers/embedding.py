@@ -37,4 +37,28 @@ def embed_document(self: Any, document_id: str) -> dict[str, str | int]:
         "provider": outcome.provider,
         "model": outcome.model,
         "dimensions": outcome.dimensions,
+        "stale_deleted": outcome.stale_deleted,
+    }
+
+
+@celery_app.task(name="app.workers.embedding.delete_document_vectors", bind=True, max_retries=3)
+def delete_document_vectors(self: Any, document_id: str) -> dict[str, str | int]:
+    factory = get_sync_session_factory()
+    with factory() as session:
+        service = EmbeddingService(session)
+        try:
+            deleted = service.delete_document_vectors(UUID(document_id))
+            session.commit()
+        except NotFoundError:
+            session.commit()
+            logger.exception("embedding.delete_document_not_found", document_id=document_id)
+            raise
+        except Exception as exc:
+            session.commit()
+            logger.exception("embedding.delete_document_failed", document_id=document_id)
+            raise self.retry(exc=exc, countdown=min(2**self.request.retries, 30)) from exc
+
+    return {
+        "document_id": document_id,
+        "deleted_vectors": deleted,
     }

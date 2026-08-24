@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session, selectinload
 from app.core.config import Settings, get_settings
 from app.embeddings.batching import BatchEmbedder
 from app.embeddings.models import (
+    EMBEDDING_RECORD_STATUS_DELETED,
     EMBEDDING_RECORD_STATUS_EMBEDDED,
     EMBEDDING_RECORD_STATUS_INDEXED,
     EmbeddingInput,
@@ -41,6 +42,7 @@ class EmbeddingOutcome:
     provider: str
     model: str
     dimensions: int
+    stale_deleted: int = 0
 
 
 class EmbeddingService:
@@ -60,80 +62,171 @@ class EmbeddingService:
 
     def embed_current_document(self, document_id: UUID) -> EmbeddingOutcome:
         document = self._get_document(document_id)
-        version = self._current_version(document)
-        chunks = self._current_chunks(version)
-        info = self.provider.info
-        now = _utcnow()
+        try:
+            version = self._current_version(document)
+            chunks = self._current_chunks(version)
+            info = self.provider.info
+            now = _utcnow()
 
-        if not chunks:
-            raise NotFoundError("document version has no chunks to embed")
+            if not chunks:
+                raise NotFoundError("document version has no chunks to embed")
 
-        document.current_state = transition(document.current_state, DocumentState.EMBEDDING).value
-        vectors = self.batch_embedder.embed(
-            [EmbeddingInput(id=str(chunk.id), text=chunk.text) for chunk in chunks]
-        )
-        vector_by_id = {item.id: item.vector for item in vectors}
+            document.current_state = transition(
+                document.current_state, DocumentState.EMBEDDING
+            ).value
+            stale_deleted = self.delete_stale_document_vectors(
+                document.id, current_version_id=version.id
+            )
+            vectors = self.batch_embedder.embed(
+                [EmbeddingInput(id=str(chunk.id), text=chunk.text) for chunk in chunks]
+            )
+            vector_by_id = {item.id: item.vector for item in vectors}
 
-        self.indexer.ensure_collection(vector_size=info.dimensions)
-        point_records: list[VectorPoint] = []
-        for chunk in chunks:
-            point_id = stable_point_id(
-                chunk.id,
+            self.indexer.ensure_collection(vector_size=info.dimensions)
+            point_records: list[VectorPoint] = []
+            for chunk in chunks:
+                point_id = stable_point_id(
+                    chunk.id,
+                    provider=info.provider,
+                    model=info.model,
+                    embedding_version=info.embedding_version,
+                )
+                content_hash = sha256_digest(chunk.text.encode("utf-8"))
+                self._upsert_embedding_record(
+                    chunk=chunk,
+                    document=document,
+                    version=version,
+                    point_id=point_id,
+                    content_hash=content_hash,
+                    embedded_at=now,
+                )
+                point_records.append(
+                    VectorPoint(
+                        id=point_id,
+                        vector=vector_by_id[str(chunk.id)],
+                        payload=chunk_payload(
+                            document=document,
+                            version=version,
+                            chunk=chunk,
+                            provider=info.provider,
+                            model=info.model,
+                            embedding_version=info.embedding_version,
+                            dimensions=info.dimensions,
+                            content_hash=content_hash,
+                        ),
+                    )
+                )
+
+            version.embedding_provider = info.provider
+            version.embedding_model = info.model
+            version.embedding_version = info.embedding_version
+            version.embedding_dimension = info.dimensions
+            version.embedded_at = now
+            version.qdrant_collection = self.indexer.collection_name
+            document.current_state = transition(
+                document.current_state, DocumentState.EMBEDDED
+            ).value
+
+            document.current_state = transition(
+                document.current_state, DocumentState.INDEXING
+            ).value
+            self.indexer.upsert(point_records)
+            indexed_at = _utcnow()
+            self._mark_records_indexed(version.id, indexed_at)
+            version.indexed_at = indexed_at
+            document.current_state = transition(
+                document.current_state, DocumentState.INDEXED
+            ).value
+            document.last_error = None
+
+            return EmbeddingOutcome(
+                document_id=document.id,
+                version_id=version.id,
+                chunk_count=len(chunks),
+                collection_name=self.indexer.collection_name,
                 provider=info.provider,
                 model=info.model,
-                embedding_version=info.embedding_version,
+                dimensions=info.dimensions,
+                stale_deleted=stale_deleted,
             )
-            content_hash = sha256_digest(chunk.text.encode("utf-8"))
-            self._upsert_embedding_record(
-                chunk=chunk,
-                document=document,
-                version=version,
-                point_id=point_id,
-                content_hash=content_hash,
-                embedded_at=now,
-            )
-            point_records.append(
-                VectorPoint(
-                    id=point_id,
-                    vector=vector_by_id[str(chunk.id)],
-                    payload=chunk_payload(
-                        document=document,
-                        version=version,
-                        chunk=chunk,
-                        provider=info.provider,
-                        model=info.model,
-                        embedding_version=info.embedding_version,
-                        dimensions=info.dimensions,
-                        content_hash=content_hash,
-                    ),
-                )
-            )
+        except Exception as exc:
+            document.last_error = str(exc)
+            if document.current_state != DocumentState.DELETED.value:
+                try:
+                    document.current_state = transition(
+                        document.current_state, DocumentState.FAILED
+                    ).value
+                except ValueError:
+                    document.current_state = DocumentState.FAILED.value
+            raise
 
-        version.embedding_provider = info.provider
-        version.embedding_model = info.model
-        version.embedding_version = info.embedding_version
-        version.embedding_dimension = info.dimensions
-        version.embedded_at = now
-        version.qdrant_collection = self.indexer.collection_name
-        document.current_state = transition(document.current_state, DocumentState.EMBEDDED).value
-
-        document.current_state = transition(document.current_state, DocumentState.INDEXING).value
-        self.indexer.upsert(point_records)
-        indexed_at = _utcnow()
-        self._mark_records_indexed(version.id, indexed_at)
-        version.indexed_at = indexed_at
-        document.current_state = transition(document.current_state, DocumentState.INDEXED).value
-        document.last_error = None
-
-        return EmbeddingOutcome(
-            document_id=document.id,
-            version_id=version.id,
-            chunk_count=len(chunks),
-            collection_name=self.indexer.collection_name,
-            provider=info.provider,
-            model=info.model,
-            dimensions=info.dimensions,
+    def needs_reembedding(self, version: DocumentVersion) -> bool:
+        info = self.provider.info
+        if not version.is_current:
+            return False
+        if version.chunk_count <= 0:
+            return False
+        return (
+            version.embedding_provider != info.provider
+            or version.embedding_model != info.model
+            or version.embedding_version != info.embedding_version
+            or version.embedding_dimension != info.dimensions
+            or version.indexed_at is None
         )
+
+    def stale_current_versions(self, organization_id: UUID) -> list[DocumentVersion]:
+        return list(
+            self.session.scalars(
+                select(DocumentVersion)
+                .join(Document, DocumentVersion.document_id == Document.id)
+                .where(
+                    Document.organization_id == organization_id,
+                    DocumentVersion.is_current.is_(True),
+                    DocumentVersion.chunk_count > 0,
+                    Document.current_state != DocumentState.DELETED.value,
+                )
+                .order_by(DocumentVersion.updated_at.desc())
+            ).all()
+        )
+
+    def stale_document_ids(self, organization_id: UUID) -> list[UUID]:
+        return [
+            version.document_id
+            for version in self.stale_current_versions(organization_id)
+            if self.needs_reembedding(version)
+        ]
+
+    def delete_document_vectors(self, document_id: UUID) -> int:
+        document = self._get_document(document_id)
+        records = self._active_records_for_document(document.id)
+        self.indexer.delete_points(record.qdrant_point_id for record in records)
+        deleted_at = _utcnow()
+        for record in records:
+            record.status = EMBEDDING_RECORD_STATUS_DELETED
+            record.indexed_at = deleted_at
+        return len(records)
+
+    def delete_stale_document_vectors(
+        self,
+        document_id: UUID,
+        *,
+        current_version_id: UUID,
+    ) -> int:
+        records = list(
+            self.session.scalars(
+                select(ChunkEmbedding).where(
+                    ChunkEmbedding.document_id == document_id,
+                    ChunkEmbedding.version_id != current_version_id,
+                    ChunkEmbedding.status == EMBEDDING_RECORD_STATUS_INDEXED,
+                )
+            ).all()
+        )
+        self.indexer.delete_points(record.qdrant_point_id for record in records)
+        deleted_at = _utcnow()
+        for record in records:
+            record.status = EMBEDDING_RECORD_STATUS_DELETED
+            record.indexed_at = deleted_at
+        return len(records)
 
     def _get_document(self, document_id: UUID) -> Document:
         document = self.session.scalars(
@@ -227,6 +320,21 @@ class EmbeddingService:
         for record in records:
             record.status = EMBEDDING_RECORD_STATUS_INDEXED
             record.indexed_at = indexed_at
+
+    def _active_records_for_document(self, document_id: UUID) -> list[ChunkEmbedding]:
+        return list(
+            self.session.scalars(
+                select(ChunkEmbedding).where(
+                    ChunkEmbedding.document_id == document_id,
+                    ChunkEmbedding.status.in_(
+                        (
+                            EMBEDDING_RECORD_STATUS_EMBEDDED,
+                            EMBEDDING_RECORD_STATUS_INDEXED,
+                        )
+                    ),
+                )
+            ).all()
+        )
 
 
 def stable_point_id(

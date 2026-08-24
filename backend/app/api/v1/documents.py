@@ -23,6 +23,7 @@ from app.ingestion.schemas import (
 )
 from app.ingestion.service import IngestionService
 from app.models.organization import Organization
+from app.workers.embedding import delete_document_vectors
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
@@ -217,4 +218,5 @@ def delete_document(
         document = service.delete_document(org.id, document_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    delete_document_vectors.delay(str(document.id))
     return DocumentRead.model_validate(document)
