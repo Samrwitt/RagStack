@@ -24,6 +24,7 @@ class DiscoveredItem:
     mime_type: str | None = None
     source_url: str | None = None
     updated_at: datetime | None = None
+    deleted: bool = False
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
@@ -67,3 +68,15 @@ class SourceConnector(Protocol):
     async def get_permissions(self, source_id: str) -> ConnectorPermission: ...
 
     async def checkpoint(self) -> dict[str, Any]: ...
+
+
+class ConnectorError(RuntimeError):
+    """Base class for connector failures."""
+
+
+class ConnectorConfigurationError(ConnectorError):
+    """Raised when a source config cannot construct a connector."""
+
+
+class ConnectorRateLimitError(ConnectorError):
+    """Raised when an upstream connector is rate limited."""

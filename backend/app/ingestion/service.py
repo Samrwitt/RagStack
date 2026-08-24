@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.chunking.models import BlockInput
 from app.chunking.registry import run_chunker
+from app.connectors.protocol import FetchedContent
 from app.core.config import get_settings
 from app.core.storage import ObjectStorage, get_object_storage, raw_object_key
 from app.ingestion.errors import NotFoundError, SourcePausedError, TenantMismatchError
@@ -339,6 +340,102 @@ class IngestionService:
         source.last_sync_at = _utcnow()
         return IngestOutcome(document=document, job=job, unchanged=False, enqueue=True)
 
+    def submit_connector_content(
+        self,
+        *,
+        organization_id: UUID,
+        source_connection_id: UUID,
+        content: FetchedContent,
+    ) -> IngestOutcome:
+        source = self.get_source(organization_id, source_connection_id)
+        if source.status == SourceStatus.PAUSED.value:
+            raise SourcePausedError("source is paused")
+        if source.status == SourceStatus.DISCONNECTED.value:
+            raise SourcePausedError("source is disconnected")
+
+        upstream_id = normalize_source_id(content.source_id)
+        digest = sha256_digest(content.data)
+        document_id = stable_document_id(
+            organization_id,
+            source.source_type,
+            source.id,
+            upstream_id,
+        )
+        filename = str(content.metadata.get("original_filename") or content.title or upstream_id)
+        document = self._get_or_create_document(
+            document_id=document_id,
+            organization_id=organization_id,
+            workspace_id=source.workspace_id,
+            source=source,
+            source_id=upstream_id,
+            title=content.title,
+            mime_type=content.mime_type,
+            filename=filename,
+            source_url=content.source_url,
+            metadata=content.metadata,
+            permissions={
+                "organization_id": str(organization_id),
+                "workspace_id": str(source.workspace_id),
+                "allowed_users": content.permissions.allowed_users,
+                "allowed_groups": content.permissions.allowed_groups,
+            },
+        )
+
+        if (
+            document.content_hash == digest
+            and document.current_version > 0
+            and document.current_state != DocumentState.DELETED.value
+        ):
+            job = self._new_job(
+                organization_id=organization_id,
+                source_connection_id=source.id,
+                document_id=document.id,
+                job_type=JobType.SYNC,
+                status=JobStatus.SKIPPED_UNCHANGED,
+                stats={"reason": "content_hash_unchanged", "content_hash": digest},
+            )
+            job.finished_at = _utcnow()
+            return IngestOutcome(document=document, job=job, unchanged=True, enqueue=False)
+
+        deterministic_key = f"sync:{source.id}:{upstream_id}:{digest}"
+        existing = self._active_job(deterministic_key)
+        if existing is not None:
+            return IngestOutcome(document=document, job=existing, unchanged=False, enqueue=False)
+        job = self._new_job(
+            organization_id=organization_id,
+            source_connection_id=source.id,
+            document_id=document.id,
+            job_type=JobType.SYNC,
+            status=JobStatus.QUEUED,
+            deterministic_key=deterministic_key,
+            stats={"connector_source_id": upstream_id},
+        )
+        staging_key = f"staging/{organization_id}/{job.id}/connector"
+        self.storage.put_bytes(staging_key, content.data, content_type=content.mime_type)
+        job.staging_object_key = staging_key
+        return IngestOutcome(document=document, job=job, unchanged=False, enqueue=True)
+
+    def create_source_sync_job(
+        self,
+        *,
+        organization_id: UUID,
+        source_connection_id: UUID,
+    ) -> IngestionJob:
+        source = self.get_source(organization_id, source_connection_id)
+        if source.source_type == SourceType.FILE_UPLOAD.value:
+            raise SourcePausedError("file_upload sources do not support connector sync")
+        active = self._active_job(f"source-sync:{source.id}")
+        if active is not None:
+            return active
+        return self._new_job(
+            organization_id=organization_id,
+            source_connection_id=source.id,
+            document_id=None,
+            job_type=JobType.SYNC,
+            status=JobStatus.QUEUED,
+            deterministic_key=f"source-sync:{source.id}",
+        )
+
     def process_job(self, job_id: UUID) -> IngestOutcome:
         job = self.session.get(IngestionJob, job_id)
         if job is None:
@@ -543,14 +640,22 @@ class IngestionService:
         title: str,
         mime_type: str,
         filename: str,
+        source_url: str | None = None,
+        metadata: dict | None = None,
+        permissions: dict | None = None,
     ) -> Document:
         document = self.session.get(Document, document_id)
         now = _utcnow()
-        permissions = {
+        document_permissions = permissions or {
             "organization_id": str(organization_id),
             "workspace_id": str(workspace_id),
             "allowed_users": source.config.get("allowed_users", []),
             "allowed_groups": source.config.get("allowed_groups", []),
+        }
+        extra_metadata = {
+            "original_filename": filename,
+            "source": source.source_type,
+            **(metadata or {}),
         }
         if document is None:
             document = Document(
@@ -562,10 +667,11 @@ class IngestionService:
                 source_id=source_id,
                 title=title,
                 mime_type=mime_type,
+                source_url=source_url,
                 current_version=0,
                 current_state=DocumentState.DISCOVERED.value,
-                extra_metadata={"original_filename": filename, "source": source.source_type},
-                permissions=permissions,
+                extra_metadata=extra_metadata,
+                permissions=document_permissions,
             )
             self.session.add(document)
             source.document_count += 1
@@ -575,8 +681,9 @@ class IngestionService:
             raise TenantMismatchError("stable document id collided across tenants")
         document.title = title
         document.mime_type = mime_type
-        document.extra_metadata = {**document.extra_metadata, "original_filename": filename}
-        document.permissions = permissions
+        document.source_url = source_url
+        document.extra_metadata = {**document.extra_metadata, **extra_metadata}
+        document.permissions = document_permissions
         document.updated_at = now
         if document.current_state == DocumentState.DELETED.value:
             document.deleted_at = None
