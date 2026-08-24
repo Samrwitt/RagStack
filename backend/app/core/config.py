@@ -66,8 +66,6 @@ class Settings(BaseSettings):
     pdf_ocr_min_chars_per_page: int = 40
     near_duplicate_max_hamming: int = 3
     near_duplicate_scan_limit: int = 500
-    near_duplicate_max_hamming: int = 3
-    near_duplicate_scan_limit: int = 500
 
     @computed_field  # type: ignore[prop-decorator]
     @property

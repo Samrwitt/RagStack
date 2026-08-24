@@ -38,7 +38,11 @@ Two hashes:
 
 Near-duplicates use a 64-bit **SimHash** of word tokens. Hamming distance ≤ `near_duplicate_max_hamming` (default 3) records a `near` relationship.
 
+Fingerprints exclude `title` blocks (often filename stems) so the same body under two names still matches. Headings, paragraphs, lists, code, and tables are included.
+
 Relationships live in `document_duplicates`. The older document is canonical; the newer one gets `canonical_document_id` for exact matches only. Both rows remain `NORMALIZED`.
+
+If two identical bodies are ingested **concurrently**, each job may finish before the other is visible; a later `reprocess` (or a subsequent upload of a third copy) records the relationship. Sequential ingestions always link.
 
 ```text
 GET /api/v1/documents/{id}/duplicates

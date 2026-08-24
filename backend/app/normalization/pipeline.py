@@ -38,14 +38,21 @@ def normalize_blocks(blocks: list[BlockSnapshot]) -> NormalizedDocument:
         for block in blocks
         if not block.dropped and block.normalized_text
     ]
-    corpus = "\n".join(block.normalized_text or "" for block in kept)
+    # Titles often come from filenames or HTML <title>; body + headings
+    # drive exact/near duplicate fingerprints so renamed copies match.
+    fingerprint_blocks = [
+        block for block in kept if block.block_type != "title"
+    ] or kept
+    corpus = "\n".join(block.normalized_text or "" for block in fingerprint_blocks)
     if not kept:
         warnings.append("all blocks dropped during normalization")
     return NormalizedDocument(
         blocks=blocks,
-        language=detect_language(corpus),
+        language=detect_language(
+            "\n".join(block.normalized_text or "" for block in kept)
+        ),
         content_hash=normalized_content_hash(
-            [block.normalized_text or "" for block in kept]
+            [block.normalized_text or "" for block in fingerprint_blocks]
         ),
         simhash=simhash64(corpus),
         kept=len(kept),

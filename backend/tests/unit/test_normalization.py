@@ -101,6 +101,24 @@ def test_exact_normalized_hash_ignores_unicode_noise() -> None:
     assert normalized_content_hash([left]) == normalized_content_hash([right])
 
 
+def test_normalized_hash_ignores_filename_titles() -> None:
+    body = "Employees receive 22 days annual leave each calendar year."
+    left = normalize_blocks(
+        [
+            BlockSnapshot(ordinal=0, block_type="title", text="handbook"),
+            BlockSnapshot(ordinal=1, block_type="paragraph", text=body),
+        ]
+    )
+    right = normalize_blocks(
+        [
+            BlockSnapshot(ordinal=0, block_type="title", text="leave-policy"),
+            BlockSnapshot(ordinal=1, block_type="paragraph", text=body),
+        ]
+    )
+    assert left.content_hash == right.content_hash
+    assert left.simhash == right.simhash
+
+
 def test_simhash_near_duplicates_are_close() -> None:
     base = (
         "The employee handbook describes annual leave policy in detail. "

@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.core.db import get_sync_session_factory
 from app.ingestion.service import IngestionService
 from app.models.duplicate import DocumentDuplicate
+from app.models.document import DocumentVersion
 from app.models.enums import DocumentState, DuplicateKind, SourceStatus, SourceType
 from app.models.organization import Organization, Workspace
 from app.models.source import SourceConnection
@@ -109,3 +110,66 @@ def test_same_bytes_different_filenames_are_exact_duplicates(session: Session) -
     listed = service.list_duplicates(org.id, second.document.id)
     assert len(listed) == 1
     assert listed[0].score == 1.0
+    session.refresh(first.document)
+    assert first.document.language == "en"
+    current = (
+        session.query(DocumentVersion)
+        .filter_by(document_id=first.document.id, is_current=True)
+        .one()
+    )
+    assert current.normalized_content_hash
+    assert current.simhash is not None
+    assert current.normalizer_name == "default"
+    assert current.normalized_at is not None
+
+
+def test_near_duplicate_is_recorded_without_deleting(session: Session) -> None:
+    org, _workspace, source = _tenant(session)
+    service = IngestionService(session)
+    base = (
+        b"The employee handbook describes annual leave policy in detail.\n"
+        b"Employees receive 22 days annual leave each calendar year.\n"
+        b"Requests must go through HR before travel is booked.\n"
+        b"Unused days may carry over subject to manager approval.\n"
+    )
+    near = (
+        b"The employee handbook describes annual leave policy in detail.\n"
+        b"Employees receive 22 days annual leave each calendar year.\n"
+        b"Requests should go through HR before travel is booked.\n"
+        b"Unused days may carry over subject to manager approval.\n"
+    )
+    first = _finish(
+        service,
+        session,
+        service.submit_upload(
+            organization_id=org.id,
+            source_connection_id=source.id,
+            filename="handbook-a.txt",
+            data=base,
+            declared_mime="text/plain",
+        ),
+    )
+    second = _finish(
+        service,
+        session,
+        service.submit_upload(
+            organization_id=org.id,
+            source_connection_id=source.id,
+            filename="handbook-b.txt",
+            data=near,
+            declared_mime="text/plain",
+        ),
+    )
+    assert first.document.id != second.document.id
+    assert second.document.current_state == DocumentState.NORMALIZED.value
+    rows = (
+        session.query(DocumentDuplicate)
+        .filter_by(organization_id=org.id, kind=DuplicateKind.NEAR.value)
+        .all()
+    )
+    assert len(rows) == 1
+    assert rows[0].score < 1.0
+    assert rows[0].score > 0.9
+    # Near duplicates do not force canonical_document_id (exact-only pointer).
+    session.refresh(second.document)
+    assert second.document.canonical_document_id is None

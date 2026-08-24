@@ -36,8 +36,6 @@ _STOPWORDS: dict[str, frozenset[str]] = {
             "each",
             "must",
             "should",
-            "employees",
-            "receive",
         }
     ),
     "fr": frozenset(
