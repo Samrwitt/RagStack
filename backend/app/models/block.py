@@ -37,6 +37,7 @@ class DocumentBlock(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     page: Mapped[int | None] = mapped_column(Integer, nullable=True)
     section: Mapped[str | None] = mapped_column(String(512), nullable=True)
     extra: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+    normalized_text: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     document: Mapped[Document] = relationship(back_populates="blocks")
     version: Mapped[DocumentVersion] = relationship(back_populates="blocks")

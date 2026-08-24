@@ -1,7 +1,8 @@
 """Ingestion control plane.
 
 Owns source connections, canonical documents, versioning, hashing, jobs,
-and FETCHED → PARSING → PARSED. Normalization starts in Phase 4.
+and FETCHED → PARSING → PARSED → NORMALIZING → NORMALIZED. Chunking starts
+in Phase 5.
 """
 
 from __future__ import annotations
@@ -11,7 +12,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID, uuid4
 
-from sqlalchemy import Select, delete, select
+from sqlalchemy import Select, delete, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.storage import ObjectStorage, get_object_storage, raw_object_key
@@ -22,6 +23,7 @@ from app.ingestion.mime import validate_upload
 from app.ingestion.state_machine import SUCCESS_STATES, transition
 from app.models.block import DocumentBlock
 from app.models.document import Document, DocumentVersion
+from app.models.duplicate import DocumentDuplicate
 from app.models.enums import (
     DocumentState,
     FailureKind,
@@ -33,6 +35,10 @@ from app.models.enums import (
 from app.models.job import IngestionJob
 from app.models.organization import Organization, Workspace
 from app.models.source import SourceConnection
+from app.normalization.dedup import record_duplicates
+from app.normalization.models import BlockSnapshot
+from app.normalization.pipeline import normalize_blocks
+from app.normalization.simhash import as_int64
 from app.parsers.errors import PermanentParseError, UnsupportedMimeError
 from app.parsers.models import RawDocument
 from app.parsers.registry import get_parser_registry
@@ -180,6 +186,23 @@ class IngestionService:
         )
         return document, version, blocks
 
+    def list_duplicates(
+        self, organization_id: UUID, document_id: UUID
+    ) -> list[DocumentDuplicate]:
+        self.get_document(organization_id, document_id)
+        stmt = (
+            select(DocumentDuplicate)
+            .where(
+                DocumentDuplicate.organization_id == organization_id,
+                or_(
+                    DocumentDuplicate.canonical_document_id == document_id,
+                    DocumentDuplicate.duplicate_document_id == document_id,
+                ),
+            )
+            .order_by(DocumentDuplicate.created_at.desc())
+        )
+        return list(self.session.scalars(stmt).all())
+
     def list_jobs(
         self,
         organization_id: UUID,
@@ -244,6 +267,13 @@ class IngestionService:
             document.content_hash == digest
             and document.current_version > 0
             and document.current_state != DocumentState.DELETED.value
+            and document.current_state
+            in {
+                DocumentState.NORMALIZED.value,
+                DocumentState.CHUNKED.value,
+                DocumentState.EMBEDDED.value,
+                DocumentState.INDEXED.value,
+            }
         ):
             job = self._new_job(
                 organization_id=organization_id,
@@ -314,7 +344,7 @@ class IngestionService:
                 and document.current_version > 0
                 and document.current_state != DocumentState.DELETED.value
             )
-            if hash_unchanged and not self._needs_parse(document, job):
+            if hash_unchanged and not self._needs_pipeline(document, job):
                 self._mark_job(
                     job,
                     JobStatus.SKIPPED_UNCHANGED,
@@ -323,76 +353,77 @@ class IngestionService:
                 self._drop_staging(job)
                 return IngestOutcome(document=document, job=job, unchanged=True, enqueue=False)
 
+            retrieved_at = None
             if hash_unchanged:
                 version = self._current_version(document)
-                parse_stats = self._parse_version(document, version, data)
-                self._mark_job(
-                    job,
-                    JobStatus.SUCCEEDED,
-                    {
-                        "version": document.current_version,
-                        "content_hash": digest,
-                        "reparsed": True,
-                        **parse_stats,
-                    },
+                parse_stats: dict = {}
+                if self._needs_parse(document, job):
+                    parse_stats = self._parse_version(document, version, data)
+                    parse_stats = {"reparsed": True, **parse_stats}
+            else:
+                self._enter_fetching(document)
+                version_number = document.current_version + 1
+                filename = _original_filename(document.source_id, document.extra_metadata)
+                key = raw_object_key(
+                    source=document.source_type,
+                    document_id=str(document.id),
+                    version=version_number,
+                    filename=filename,
                 )
-                self._drop_staging(job)
-                return IngestOutcome(document=document, job=job, unchanged=False, enqueue=False)
+                stored = self.storage.put_bytes(
+                    key,
+                    data,
+                    content_type=document.mime_type or "application/octet-stream",
+                )
+                retrieved_at = _utcnow()
+                self._retire_current_versions(document.id)
+                version = DocumentVersion(
+                    document_id=document.id,
+                    version_number=version_number,
+                    content_hash=digest,
+                    raw_object_key=stored.key,
+                    mime_type=document.mime_type,
+                    size_bytes=len(data),
+                    original_filename=filename,
+                    is_current=True,
+                    retrieved_at=retrieved_at,
+                    extra_metadata={"source_id": document.source_id},
+                )
+                self.session.add(version)
+                self.session.flush()
+                document.current_version = version_number
+                document.content_hash = digest
+                document.raw_object_key = stored.key
+                document.last_error = None
+                document.retry_count = 0
+                document.deleted_at = None
+                self._set_state(document, DocumentState.FETCHED)
+                parse_stats = self._parse_version(document, version, data)
+                parse_stats = {
+                    "bytes": len(data),
+                    "raw_object_key": stored.key,
+                    **parse_stats,
+                }
 
-            self._enter_fetching(document)
-            version_number = document.current_version + 1
-            filename = _original_filename(document.source_id, document.extra_metadata)
-            key = raw_object_key(
-                source=document.source_type,
-                document_id=str(document.id),
-                version=version_number,
-                filename=filename,
-            )
-            stored = self.storage.put_bytes(
-                key,
-                data,
-                content_type=document.mime_type or "application/octet-stream",
-            )
-            retrieved_at = _utcnow()
-            self._retire_current_versions(document.id)
-            version = DocumentVersion(
-                document_id=document.id,
-                version_number=version_number,
-                content_hash=digest,
-                raw_object_key=stored.key,
-                mime_type=document.mime_type,
-                size_bytes=len(data),
-                original_filename=filename,
-                is_current=True,
-                retrieved_at=retrieved_at,
-                extra_metadata={"source_id": document.source_id},
-            )
-            self.session.add(version)
-            self.session.flush()
-            document.current_version = version_number
-            document.content_hash = digest
-            document.raw_object_key = stored.key
-            document.last_error = None
-            document.retry_count = 0
-            document.deleted_at = None
-            self._set_state(document, DocumentState.FETCHED)
-            parse_stats = self._parse_version(document, version, data)
+            norm_stats = self._normalize_version(document, version)
             self._mark_job(
                 job,
                 JobStatus.SUCCEEDED,
                 {
-                    "version": version_number,
+                    "version": document.current_version,
                     "content_hash": digest,
-                    "bytes": len(data),
-                    "raw_object_key": stored.key,
                     **parse_stats,
+                    **norm_stats,
                 },
             )
             self._drop_staging(job)
-            source = self.session.get(SourceConnection, document.source_connection_id)
-            if source is not None:
-                source.last_sync_at = retrieved_at
-            return IngestOutcome(document=document, job=job, unchanged=False, enqueue=False)
+            if retrieved_at is not None:
+                source = self.session.get(SourceConnection, document.source_connection_id)
+                if source is not None:
+                    source.last_sync_at = retrieved_at
+            return IngestOutcome(
+                document=document, job=job, unchanged=False, enqueue=False
+            )
         except PermanentParseError as exc:
             document.last_error = str(exc)
             document.retry_count += 1
@@ -609,14 +640,35 @@ class IngestionService:
     def _drop_staging(self, job: IngestionJob) -> None:
         job.staging_object_key = None
 
-    def _needs_parse(self, document: Document, job: IngestionJob) -> bool:
+    def _needs_pipeline(self, document: Document, job: IngestionJob) -> bool:
         if job.job_type == JobType.REPROCESS.value:
             return True
         return document.current_state in {
             DocumentState.FETCHED.value,
-            DocumentState.FAILED.value,
             DocumentState.PARSING.value,
+            DocumentState.PARSED.value,
+            DocumentState.NORMALIZING.value,
+            DocumentState.FAILED.value,
         }
+
+    def _needs_parse(self, document: Document, job: IngestionJob) -> bool:
+        if job.job_type == JobType.REPROCESS.value:
+            return True
+        if document.current_state in {
+            DocumentState.FETCHED.value,
+            DocumentState.PARSING.value,
+        }:
+            return True
+        if document.current_state == DocumentState.FAILED.value:
+            last = document.last_successful_state
+            return last not in {
+                DocumentState.PARSED.value,
+                DocumentState.NORMALIZED.value,
+                DocumentState.CHUNKED.value,
+                DocumentState.EMBEDDED.value,
+                DocumentState.INDEXED.value,
+            }
+        return False
 
     def _current_version(self, document: Document) -> DocumentVersion:
         stmt = select(DocumentVersion).where(
@@ -632,6 +684,11 @@ class IngestionService:
         if document.current_state == DocumentState.PARSING.value:
             return
         self._set_state(document, DocumentState.PARSING)
+
+    def _enter_normalizing(self, document: Document) -> None:
+        if document.current_state == DocumentState.NORMALIZING.value:
+            return
+        self._set_state(document, DocumentState.NORMALIZING)
 
     def _parse_version(
         self, document: Document, version: DocumentVersion, data: bytes
@@ -685,3 +742,62 @@ class IngestionService:
         version.parsed_block_count = len(parsed.blocks)
         version.parse_warnings = parsed.warnings
         version.parsed_at = _utcnow()
+
+    def _normalize_version(self, document: Document, version: DocumentVersion) -> dict:
+        self._enter_normalizing(document)
+        rows = list(
+            self.session.scalars(
+                select(DocumentBlock)
+                .where(DocumentBlock.version_id == version.id)
+                .order_by(DocumentBlock.ordinal)
+            ).all()
+        )
+        snapshots = [
+            BlockSnapshot(
+                ordinal=row.ordinal,
+                block_type=row.block_type,
+                text=row.text,
+                page=row.page,
+                heading_level=row.heading_level,
+                section=row.section,
+                extra=dict(row.extra or {}),
+            )
+            for row in rows
+        ]
+        result = normalize_blocks(snapshots)
+        by_ordinal = {item.ordinal: item for item in result.blocks}
+        for row in rows:
+            snapshot = by_ordinal[row.ordinal]
+            row.normalized_text = snapshot.normalized_text
+            extra = dict(row.extra or {})
+            if snapshot.dropped:
+                extra["dropped"] = True
+                extra["drop_reason"] = snapshot.drop_reason
+            else:
+                extra.pop("dropped", None)
+                extra.pop("drop_reason", None)
+            row.extra = extra
+        version.language = result.language
+        version.normalized_content_hash = result.content_hash
+        version.simhash = as_int64(result.simhash)
+        version.normalizer_name = result.normalizer_name
+        version.normalizer_version = result.normalizer_version
+        version.normalized_at = _utcnow()
+        document.language = result.language
+        document.last_error = None
+        dup_stats = record_duplicates(
+            self.session,
+            organization_id=document.organization_id,
+            document=document,
+            version=version,
+        )
+        self._set_state(document, DocumentState.NORMALIZED)
+        return {
+            "language": result.language,
+            "normalized_content_hash": result.content_hash,
+            "simhash": result.simhash,
+            "normalized_kept": result.kept,
+            "normalized_dropped": result.dropped,
+            "normalizer_version": result.normalizer_version,
+            "duplicates": dup_stats,
+        }

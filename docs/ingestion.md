@@ -1,6 +1,6 @@
 # Ingestion
 
-Status: **Phase 3 implemented** (fetch, hash, version, skip, structured parse). Normalization starts in Phase 4.
+Status: **Phase 4 implemented** (fetch through normalize and duplicate recording). Chunking starts in Phase 5.
 
 ## Goals
 
@@ -22,6 +22,7 @@ upload / discover
   → unchanged? SKIPPED_UNCHANGED (no new version)
   → changed? store raw/vN, version += 1, state FETCHED
   → PARSING → PARSED (structured blocks)
+  → NORMALIZING → NORMALIZED (clean text, language, duplicates)
 ```
 
 Identical bytes at submit time never enqueue a worker. A **reprocess** job replays stored raw and re-parses even when the hash is unchanged (parser upgrades).
@@ -106,3 +107,5 @@ curl -s http://localhost:8000/api/v1/documents/{id}/blocks
 Omit `X-Organization-Id` in development; the API bootstraps the Acme Systems tenant.
 
 See [parsing.md](parsing.md) for parser versioning, block types, and OCR policy.
+
+See [normalization.md](normalization.md) for cleaning, language, and duplicate policy.

@@ -1,6 +1,6 @@
 # Parsing
 
-Status: **Phase 3 implemented**. Documents move `FETCHED → PARSING → PARSED` in the same ingestion job. Normalization starts in Phase 4.
+Status: **Phase 3 implemented**. Documents move `FETCHED → PARSING → PARSED` in the same ingestion job, then Phase 4 normalizes.
 
 ## Goals
 

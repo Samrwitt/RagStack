@@ -14,6 +14,7 @@ from app.ingestion.schemas import (
     BlockRead,
     DocumentRead,
     DocumentVersionRead,
+    DuplicateRead,
     JobRead,
     ParsedBlocksRead,
     UploadResult,
@@ -113,6 +114,8 @@ def get_document_blocks(
         parser_version=doc_version.parser_version,
         used_ocr=doc_version.used_ocr,
         title=document.title,
+        language=doc_version.language,
+        normalized_content_hash=doc_version.normalized_content_hash,
         warnings=list(doc_version.parse_warnings or []),
         blocks=[
             BlockRead(
@@ -120,6 +123,9 @@ def get_document_blocks(
                 ordinal=item.ordinal,
                 type=item.block_type,
                 text=item.text,
+                normalized_text=item.normalized_text,
+                dropped=bool((item.extra or {}).get("dropped")),
+                drop_reason=(item.extra or {}).get("drop_reason"),
                 level=item.heading_level,
                 page=item.page,
                 section=item.section,
@@ -128,6 +134,19 @@ def get_document_blocks(
             for item in blocks
         ],
     )
+
+
+@router.get("/{document_id}/duplicates", response_model=list[DuplicateRead])
+def list_document_duplicates(
+    document_id: UUID,
+    org: Annotated[Organization, Depends(get_current_organization)],
+    service: Annotated[IngestionService, Depends(get_ingestion_service)],
+) -> list[DuplicateRead]:
+    try:
+        rows = service.list_duplicates(org.id, document_id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return [DuplicateRead.model_validate(item) for item in rows]
 
 
 @router.post("/{document_id}/reprocess", response_model=UploadResult)

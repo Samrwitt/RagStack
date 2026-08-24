@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 from uuid import UUID
 
 from sqlalchemy import (
+    BigInteger,
     Boolean,
     DateTime,
     ForeignKey,
@@ -63,6 +64,10 @@ class Document(TimestampMixin, Base):
     extra_metadata: Mapped[dict] = mapped_column("metadata", JSONB, default=dict, nullable=False)
     permissions: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
     raw_object_key: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    language: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    canonical_document_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("documents.id"), nullable=True, index=True
+    )
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     source_connection: Mapped[SourceConnection] = relationship(back_populates="documents")
@@ -98,6 +103,17 @@ class DocumentVersion(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     parsed_block_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     parse_warnings: Mapped[list] = mapped_column(JSONB, default=list, nullable=False)
     parsed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    language: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    normalized_content_hash: Mapped[str | None] = mapped_column(
+        String(64), nullable=True, index=True
+    )
+    simhash: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    normalizer_name: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    normalizer_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    normalized_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    duplicate_kind: Mapped[str | None] = mapped_column(String(16), nullable=True)
 
     document: Mapped[Document] = relationship(back_populates="versions")
     blocks: Mapped[list[DocumentBlock]] = relationship(

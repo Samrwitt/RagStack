@@ -1,7 +1,7 @@
 """Content hashing for idempotent ingestion.
 
-Phase 2 hashes original bytes. Phase 4 will add a separate hash of
-normalized text; both remain stored so replay stays deterministic.
+Raw-byte SHA-256 skips unchanged files. Normalized-text SHA-256 records
+cross-document exact duplicates without deleting either copy.
 """
 
 import hashlib

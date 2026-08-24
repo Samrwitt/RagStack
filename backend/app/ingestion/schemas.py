@@ -49,6 +49,13 @@ class DocumentVersionRead(ORMModel):
     parsed_block_count: int = 0
     parse_warnings: list[Any] = Field(default_factory=list)
     parsed_at: datetime | None = None
+    language: str | None = None
+    normalized_content_hash: str | None = None
+    simhash: int | None = None
+    normalizer_name: str | None = None
+    normalizer_version: int | None = None
+    normalized_at: datetime | None = None
+    duplicate_kind: str | None = None
 
 
 class DocumentRead(ORMModel):
@@ -73,6 +80,8 @@ class DocumentRead(ORMModel):
     created_at: datetime
     updated_at: datetime
     deleted_at: datetime | None
+    language: str | None = None
+    canonical_document_id: UUID | None = None
 
 
 class JobRead(ORMModel):
@@ -102,6 +111,9 @@ class BlockRead(BaseModel):
     ordinal: int
     type: str
     text: str
+    normalized_text: str | None = None
+    dropped: bool = False
+    drop_reason: str | None = None
     level: int | None = None
     page: int | None = None
     section: str | None = None
@@ -116,5 +128,18 @@ class ParsedBlocksRead(BaseModel):
     parser_version: int | None
     used_ocr: bool
     title: str
+    language: str | None = None
+    normalized_content_hash: str | None = None
     warnings: list[Any] = Field(default_factory=list)
     blocks: list[BlockRead]
+
+
+class DuplicateRead(ORMModel):
+    id: UUID
+    canonical_document_id: UUID
+    duplicate_document_id: UUID
+    canonical_version_id: UUID
+    duplicate_version_id: UUID
+    kind: str
+    score: float
+    created_at: datetime

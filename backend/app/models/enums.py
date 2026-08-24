@@ -66,3 +66,8 @@ class JobStatus(StrEnum):
 class FailureKind(StrEnum):
     TEMPORARY = "temporary"
     PERMANENT = "permanent"
+
+
+class DuplicateKind(StrEnum):
+    EXACT = "exact"
+    NEAR = "near"

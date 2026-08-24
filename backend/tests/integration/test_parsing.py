@@ -86,7 +86,7 @@ Use a bearer token.
             declared_mime="text/markdown",
         ),
     )
-    assert outcome.document.current_state == DocumentState.PARSED.value
+    assert outcome.document.current_state == DocumentState.NORMALIZED.value
     assert outcome.document.title == "Authentication"
     version = (
         session.query(DocumentVersion)
@@ -126,7 +126,7 @@ def test_reprocess_reparses_without_new_version(session: Session) -> None:
     )
     reparsed = _finish(service, session, service.reprocess(org.id, first.document.id))
     assert reparsed.document.current_version == 1
-    assert reparsed.document.current_state == DocumentState.PARSED.value
+    assert reparsed.document.current_state == DocumentState.NORMALIZED.value
     assert reparsed.job.job_type == JobType.REPROCESS.value
     assert reparsed.job.status == JobStatus.SUCCEEDED.value
     assert reparsed.job.stats.get("reparsed") is True

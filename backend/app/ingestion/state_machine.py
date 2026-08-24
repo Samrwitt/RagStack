@@ -42,6 +42,8 @@ _ALLOWED: dict[DocumentState, frozenset[DocumentState]] = {
     DocumentState.NORMALIZED: frozenset(
         {
             DocumentState.CHUNKING,
+            DocumentState.PARSING,
+            DocumentState.NORMALIZING,
             DocumentState.FETCHING,
             DocumentState.FAILED,
             DocumentState.DELETED,
@@ -76,7 +78,12 @@ _ALLOWED: dict[DocumentState, frozenset[DocumentState]] = {
         {DocumentState.FETCHING, DocumentState.PARSING, DocumentState.FAILED, DocumentState.DELETED}
     ),
     DocumentState.FAILED: frozenset(
-        {DocumentState.FETCHING, DocumentState.PARSING, DocumentState.DELETED}
+        {
+            DocumentState.FETCHING,
+            DocumentState.PARSING,
+            DocumentState.NORMALIZING,
+            DocumentState.DELETED,
+        }
     ),
     DocumentState.DELETED: frozenset(),
 }
