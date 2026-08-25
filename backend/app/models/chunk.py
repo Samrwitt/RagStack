@@ -5,8 +5,9 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from uuid import UUID
 
-from sqlalchemy import ForeignKey, Index, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Computed, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import TSVECTOR
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -23,6 +24,7 @@ class DocumentChunk(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         Index("ix_document_chunks_document_id", "document_id"),
         Index("ix_document_chunks_version_id", "version_id"),
         Index("ix_document_chunks_parent_chunk_id", "parent_chunk_id"),
+        Index("ix_document_chunks_search_vector", "search_vector", postgresql_using="gin"),
     )
 
     document_id: Mapped[UUID] = mapped_column(
@@ -36,6 +38,11 @@ class DocumentChunk(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     ordinal: Mapped[int] = mapped_column(Integer, nullable=False)
     text: Mapped[str] = mapped_column(Text, nullable=False)
+    search_vector: Mapped[str] = mapped_column(
+        TSVECTOR,
+        Computed("to_tsvector('simple', coalesce(text, ''))", persisted=True),
+        nullable=False,
+    )
     token_count: Mapped[int] = mapped_column(Integer, nullable=False)
     page: Mapped[int | None] = mapped_column(Integer, nullable=True)
     section: Mapped[str | None] = mapped_column(String(512), nullable=True)

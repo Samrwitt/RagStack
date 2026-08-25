@@ -25,6 +25,18 @@ x-backend-env: &backend-env
   S3_REGION: us-east-1
   QDRANT_URL: http://qdrant:6333
   MAX_UPLOAD_SIZE_BYTES: "52428800"
+  EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-openai}
+  EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-3-small}
+  EMBEDDING_DIMENSION: ${EMBEDDING_DIMENSION:-1536}
+  OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+  OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
+  LLM_PROVIDER: ${LLM_PROVIDER:-openai}
+  LLM_MODEL: ${LLM_MODEL:-gpt-4o-mini}
+  RERANKER_PROVIDER: ${RERANKER_PROVIDER:-cohere}
+  RERANKER_ENABLED: ${RERANKER_ENABLED:-true}
+  RERANKER_MODEL: ${RERANKER_MODEL:-rerank-v3.5}
+  COHERE_API_KEY: ${COHERE_API_KEY:-}
+  COHERE_BASE_URL: ${COHERE_BASE_URL:-https://api.cohere.com}
 
 x-backend-build: &backend-build
   context: ./backend

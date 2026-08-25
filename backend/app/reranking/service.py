@@ -17,7 +17,10 @@ class RerankingService:
         settings: Settings | None = None,
     ) -> None:
         self.settings = settings or get_settings()
-        self.provider = provider or get_reranker_provider(self.settings.reranker_provider)
+        self.provider = provider or get_reranker_provider(
+            self.settings.reranker_provider,
+            self.settings,
+        )
 
     def rerank(
         self,

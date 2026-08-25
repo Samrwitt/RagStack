@@ -21,6 +21,12 @@ os.environ.setdefault("S3_BUCKET", "corpusforge")
 os.environ.setdefault("QDRANT_URL", "http://localhost:6333")
 os.environ.setdefault("LOG_FORMAT", "console")
 os.environ.setdefault("LOG_LEVEL", "WARNING")
+os.environ.setdefault("EMBEDDING_PROVIDER", "deterministic")
+os.environ.setdefault("EMBEDDING_MODEL", "deterministic-v1")
+os.environ.setdefault("EMBEDDING_DIMENSION", "128")
+os.environ.setdefault("LLM_PROVIDER", "extractive")
+os.environ.setdefault("RERANKER_PROVIDER", "lexical_overlap")
+os.environ.setdefault("RERANKER_ENABLED", "true")
 
 from fastapi.testclient import TestClient  # noqa: E402
 

@@ -1,13 +1,10 @@
-"""BM25 lexical retrieval over current document chunks."""
+"""Indexed sparse retrieval over current document chunks."""
 
 from __future__ import annotations
 
-import math
 import re
-from collections import Counter
-from dataclasses import dataclass
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models.chunk import DocumentChunk
@@ -19,39 +16,80 @@ from app.retrieval.models import RetrievalHit, RetrievalRequest
 TOKEN_RE = re.compile(r"[A-Za-z0-9_]+")
 
 
-@dataclass(frozen=True, slots=True)
-class _Candidate:
-    chunk: DocumentChunk
-    document: Document
-    version: DocumentVersion
-    terms: Counter[str]
-    length: int
+class PostgresSparseRetriever:
+    """Sparse retriever backed by PostgreSQL full-text search and a GIN index."""
 
-
-class BM25Retriever:
-    def __init__(self, session: Session, *, k1: float = 1.5, b: float = 0.75) -> None:
+    def __init__(self, session: Session) -> None:
         self.session = session
-        self.k1 = k1
-        self.b = b
 
     def search(self, request: RetrievalRequest) -> list[RetrievalHit]:
-        query_terms = tokenize(request.query)
-        if not query_terms:
+        if not tokenize(request.query):
             return []
-        candidates = self._load_candidates(request)
-        if not candidates:
-            return []
-        doc_freq = Counter[str]()
-        for candidate in candidates:
-            for term in set(candidate.terms):
-                doc_freq[term] += 1
-        avg_len = sum(candidate.length for candidate in candidates) / len(candidates)
-        scored = [
-            (self._score(candidate, query_terms, doc_freq, len(candidates), avg_len), candidate)
-            for candidate in candidates
-        ]
-        ranked = [(score, candidate) for score, candidate in scored if score > 0]
-        ranked.sort(key=lambda item: item[0], reverse=True)
+        tsquery = func.plainto_tsquery("simple", request.query)
+        score = func.ts_rank_cd(DocumentChunk.search_vector, tsquery).label("sparse_score")
+        stmt = (
+            select(DocumentChunk, Document, DocumentVersion, score)
+            .join(Document, DocumentChunk.document_id == Document.id)
+            .join(DocumentVersion, DocumentChunk.version_id == DocumentVersion.id)
+            .where(DocumentChunk.search_vector.op("@@")(tsquery))
+            .order_by(score.desc(), DocumentChunk.ordinal.asc())
+            .limit(request.candidate_k)
+        )
+        stmt = apply_document_filters(stmt, request.filters)
+        rows = self.session.execute(stmt).all()
+        hits: list[RetrievalHit] = []
+        for chunk, document, version, sparse_score in rows:
+            if not can_read_document(document.permissions or {}, request.acl):
+                continue
+            hits.append(
+                self._hit(
+                    chunk=chunk,
+                    document=document,
+                    version=version,
+                    score=float(sparse_score),
+                    rank=len(hits) + 1,
+                )
+            )
+            if len(hits) >= request.top_k:
+                break
+        return hits
+
+    def _hit(
+        self,
+        *,
+        chunk: DocumentChunk,
+        document: Document,
+        version: DocumentVersion,
+        score: float,
+        rank: int,
+    ) -> RetrievalHit:
+        return RetrievalHit(
+            chunk_id=chunk.id,
+            document_id=document.id,
+            version_id=version.id,
+            score=score,
+            rank=rank,
+            text=chunk.text,
+            title=document.title,
+            source_type=document.source_type,
+            source_url=document.source_url,
+            page=chunk.page,
+            section=chunk.section,
+            metadata={
+                **(document.extra_metadata or {}),
+                **(chunk.extra or {}),
+                "parent_chunk_id": str(chunk.parent_chunk_id) if chunk.parent_chunk_id else None,
+                "token_count": chunk.token_count,
+            },
+            scores={"sparse": score},
+        )
+
+
+BM25Retriever = PostgresSparseRetriever
+
+
+def tokenize(text: str) -> list[str]:
+    return [match.group(0).lower() for match in TOKEN_RE.finditer(text)]
         return [
             self._hit(candidate, score=score, rank=rank)
             for rank, (score, candidate) in enumerate(ranked[: request.top_k], start=1)

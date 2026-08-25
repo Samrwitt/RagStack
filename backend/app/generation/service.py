@@ -22,7 +22,7 @@ class GenerationService:
     ) -> None:
         self.session = session
         self.settings = settings or get_settings()
-        self.provider = provider or get_llm_provider(self.settings.llm_provider)
+        self.provider = provider or get_llm_provider(self.settings.llm_provider, self.settings)
         self.retrieval = RetrievalService(session, settings=self.settings)
 
     def answer(

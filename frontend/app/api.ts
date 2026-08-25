@@ -38,6 +38,34 @@ export type Job = {
   created_at: string;
 };
 
+<<<<<<< Updated upstream
+=======
+export type ChatMessage = {
+  role: "user" | "assistant" | "system";
+  content: string;
+};
+
+export type Citation = {
+  index: number;
+  document_id: string;
+  version_id: string;
+  chunk_id: string;
+  title: string;
+  source_type: string;
+  source_url: string | null;
+  page: number | null;
+  section: string | null;
+};
+
+export type ChatResponse = {
+  answer: string;
+  evidence_status: string;
+  citations: Citation[];
+  retrieval_query: string;
+  context: Record<string, unknown>[];
+};
+
+>>>>>>> Stashed changes
 export type DashboardData = {
   health: HealthReport | null;
   sources: Source[];
