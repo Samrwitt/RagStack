@@ -114,7 +114,18 @@ class GoogleDriveConnector:
                     },
                     headers=self._headers(),
                 )
-                response.raise_for_status()
+                if getattr(response, "status_code", None) == 410:
+                    async for item in self._discover_full({}):
+                        yield item
+                    return
+                try:
+                    response.raise_for_status()
+                except httpx.HTTPStatusError as exc:
+                    if exc.response.status_code == 410:
+                        async for item in self._discover_full({}):
+                            yield item
+                        return
+                    raise
                 payload = response.json()
                 for change in payload.get("changes", []):
                     file_id = str(change.get("fileId"))
@@ -128,6 +139,12 @@ class GoogleDriveConnector:
                         )
                         continue
                     if self.folder_id and self.folder_id not in set(file.get("parents") or []):
+                        yield DiscoveredItem(
+                            source_id=file_id,
+                            title=file_id,
+                            deleted=True,
+                            metadata=metadata_with_connector("google_drive", change),
+                        )
                         continue
                     source_id = str(file["id"])
                     self._files[source_id] = file
@@ -140,17 +157,30 @@ class GoogleDriveConnector:
                         metadata=metadata_with_connector("google_drive", file),
                     )
                 page_token = payload.get("nextPageToken")
-                if payload.get("newStartPageToken"):
+                next_start_token = payload.get("newStartPageToken") or page_token
+                if next_start_token:
                     self._checkpoint = {
-                        "start_page_token": payload["newStartPageToken"],
+                        "start_page_token": next_start_token,
                         "last_sync_at": datetime.now(UTC).isoformat(),
                     }
 
     async def fetch(self, source_id: str) -> FetchedContent:
-        file = self._files[source_id]
-        mime_type = str(file["mimeType"])
         timeout = float(self.config.get("timeout_seconds", 30))
         async with httpx.AsyncClient(timeout=timeout) as client:
+            if source_id not in self._files:
+                response = await client.get(
+                    f"{self.api_base}/files/{source_id}",
+                    params={
+                        "fields": "id,name,mimeType,webViewLink,modifiedTime",
+                        "supportsAllDrives": True,
+                    },
+                    headers=self._headers(),
+                )
+                response.raise_for_status()
+                self._files[source_id] = response.json()
+
+            file = self._files[source_id]
+            mime_type = str(file["mimeType"])
             if mime_type in GOOGLE_DOC_EXPORTS:
                 export_mime, stored_mime = GOOGLE_DOC_EXPORTS[mime_type]
                 url = f"{self.api_base}/files/{source_id}/export"

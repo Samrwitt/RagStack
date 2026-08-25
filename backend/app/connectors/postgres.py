@@ -44,8 +44,11 @@ class PostgresConnector:
             for raw in cur.fetchall():
                 row = dict(zip(columns, raw, strict=True))
                 source_id = str(row[self.pk_field])
+                prev_cursor = (checkpoint or {}).get("cursor")
                 self._checkpoint = {
-                    "cursor": _cursor_from_row(row, self.pk_field, self.updated_at_field),
+                    "cursor": _cursor_from_row(
+                        row, self.pk_field, self.updated_at_field, prev_cursor
+                    ),
                     "last_sync_at": datetime.now(UTC).isoformat(),
                 }
                 if self.deleted_field and bool(row.get(self.deleted_field)):
@@ -77,6 +80,35 @@ class PostgresConnector:
                 )
 
     async def fetch(self, source_id: str) -> FetchedContent:
+        if source_id not in self._rows:
+            psycopg = _load_psycopg()
+            field_names = {
+                self.pk_field,
+                self.title_field,
+                self.updated_at_field,
+                *self.content_fields,
+            }
+            if self.deleted_field:
+                field_names.add(self.deleted_field)
+            columns = sorted(field_names)
+            for identifier in [self.table, *columns]:
+                _validate_identifier(identifier)
+            sql = psycopg.sql
+            query = sql.SQL("SELECT {columns} FROM {table} WHERE {pk} = %s LIMIT 1").format(
+                columns=sql.SQL(", ").join(sql.Identifier(col) for col in columns),
+                table=sql.Identifier(*self.table.split(".")),
+                pk=sql.Identifier(self.pk_field),
+            )
+            typed_pk = _coerce_pk_val(source_id, None)
+            with psycopg.connect(self.dsn) as conn, conn.cursor() as cur:
+                cur.execute(query, [typed_pk])
+                desc = cur.description
+                if desc and (raw := cur.fetchone()):
+                    col_names = [d.name for d in desc]
+                    self._rows[source_id] = dict(zip(col_names, raw, strict=True))
+                else:
+                    raise KeyError(f"source_id {source_id} not found in database")
+
         row = self._rows[source_id]
         content = (
             {field: row.get(field) for field in self.content_fields}
@@ -120,16 +152,22 @@ class PostgresConnector:
         cursor = checkpoint.get("cursor") if isinstance(checkpoint.get("cursor"), dict) else {}
         updated_at = _parse_checkpoint_datetime(cursor.get("updated_at"))
         pk = cursor.get("pk")
+        pk_type = cursor.get("pk_type")
+        typed_pk = _coerce_pk_val(pk, pk_type)
         where = sql.SQL("")
         params: list[Any] = []
-        if updated_at is not None and pk is not None:
+        if updated_at is not None and typed_pk is not None:
             where = sql.SQL(
                 " WHERE ({updated_at} > %s OR ({updated_at} = %s AND {pk} > %s))"
             ).format(
                 updated_at=sql.Identifier(self.updated_at_field),
                 pk=sql.Identifier(self.pk_field),
             )
-            params.extend([updated_at, updated_at, pk])
+            params.extend([updated_at, updated_at, typed_pk])
+        elif typed_pk is not None:
+            where = sql.SQL(" WHERE {pk} > %s").format(pk=sql.Identifier(self.pk_field))
+            params.append(typed_pk)
+
         params.append(self.batch_size)
         query = sql.SQL(
             "SELECT {columns} FROM {table}{where} "
@@ -177,13 +215,33 @@ def _parse_checkpoint_datetime(value: object) -> datetime | None:
     return parsed
 
 
+def _coerce_pk_val(pk: Any, pk_type: str | None) -> Any:
+    if pk is None:
+        return None
+    if pk_type in ("int", "int64", "long") or (isinstance(pk, str) and pk.isdigit()):
+        try:
+            return int(pk)
+        except ValueError:
+            pass
+    if pk_type in ("float", "double"):
+        try:
+            return float(pk)
+        except ValueError:
+            pass
+    return pk
+
+
 def _cursor_from_row(
     row: dict[str, Any],
     pk_field: str,
     updated_at_field: str,
+    prev_cursor: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    updated_at_val = _json_safe(row.get(updated_at_field))
+    if updated_at_val is None and prev_cursor and isinstance(prev_cursor, dict):
+        updated_at_val = prev_cursor.get("updated_at")
     return {
-        "updated_at": _json_safe(row.get(updated_at_field)),
+        "updated_at": updated_at_val,
         "pk": _json_safe(row.get(pk_field)),
         "pk_type": type(row.get(pk_field)).__name__,
     }

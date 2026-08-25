@@ -65,15 +65,24 @@ class WebsiteConnector:
         queued: set[str] = set()
         queue = [*self.start_urls, *previous_pages.keys()]
         queued.update(queue)
-        allowed_hosts = {urlparse(url).netloc for url in self.start_urls}
+        allowed_hosts = {
+            urlparse(url).netloc
+            for url in [*self.start_urls, *previous_pages.keys()]
+            if urlparse(url).netloc
+        }
         discovered_urls: set[str] = set()
         timeout = float(self.config.get("timeout_seconds", 30))
         async with httpx.AsyncClient(timeout=timeout) as client:
             for sitemap_url in self.sitemap_urls:
-                for url in await _sitemap_urls(client, sitemap_url):
-                    if url not in queued:
-                        queue.append(url)
-                        queued.add(url)
+                try:
+                    for url in await _sitemap_urls(client, sitemap_url):
+                        if urlparse(url).netloc:
+                            allowed_hosts.add(urlparse(url).netloc)
+                        if url not in queued:
+                            queue.append(url)
+                            queued.add(url)
+                except Exception:
+                    continue
             while queue and len(self._pages) < self.max_pages:
                 url = queue.pop(0)
                 if url in seen:
@@ -81,18 +90,39 @@ class WebsiteConnector:
                 if self.request_delay_seconds > 0:
                     await asyncio.sleep(self.request_delay_seconds)
                 seen.add(url)
-                response = await client.get(
-                    url,
-                    follow_redirects=True,
-                    headers=_conditional_headers(_page_checkpoint(previous_pages, url)),
-                )
+                try:
+                    response = await client.get(
+                        url,
+                        follow_redirects=True,
+                        headers=_conditional_headers(_page_checkpoint(previous_pages, url)),
+                    )
+                except httpx.HTTPError:
+                    continue
+
                 if response.status_code == 304:
                     metadata = _page_checkpoint(previous_pages, url)
                     canonical = str(metadata.get("canonical_url") or url)
                     discovered_urls.add(canonical)
                     self._checkpoint = _checkpoint(previous_pages, discovered_urls)
                     continue
-                response.raise_for_status()
+
+                if response.status_code in (404, 410):
+                    metadata = _page_checkpoint(previous_pages, url)
+                    canonical = str(metadata.get("canonical_url") or url)
+                    previous_pages.pop(canonical, None)
+                    previous_pages.pop(url, None)
+                    yield DiscoveredItem(
+                        source_id=canonical,
+                        title=canonical,
+                        source_url=canonical,
+                        deleted=True,
+                        metadata=metadata_with_connector("website", {"url": canonical}),
+                    )
+                    continue
+
+                if response.status_code >= 400:
+                    continue
+
                 content_type = response.headers.get("content-type", "text/html").split(";")[0]
                 body = response.content
                 parser = _PageParser()
@@ -100,7 +130,7 @@ class WebsiteConnector:
                     parser.feed(response.text)
                     for link in parser.links:
                         next_url = urljoin(str(response.url), link)
-                        if self.same_domain and urlparse(next_url).netloc not in allowed_hosts:
+                        if self.same_domain and allowed_hosts and urlparse(next_url).netloc not in allowed_hosts:
                             continue
                         if next_url not in seen and next_url not in queued:
                             queue.append(next_url)
@@ -134,6 +164,19 @@ class WebsiteConnector:
                 )
 
     async def fetch(self, source_id: str) -> FetchedContent:
+        if source_id not in self._pages:
+            timeout = float(self.config.get("timeout_seconds", 30))
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                response = await client.get(source_id, follow_redirects=True)
+                response.raise_for_status()
+                content_type = response.headers.get("content-type", "text/html").split(";")[0]
+                parser = _PageParser()
+                if content_type == "text/html":
+                    parser.feed(response.text)
+                canonical = parser.canonical or str(response.url)
+                title = parser.title or urlparse(canonical).path.strip("/") or canonical
+                self._pages[source_id] = (title, response.content, content_type)
+
         title, body, mime_type = self._pages[source_id]
         return FetchedContent(
             source_id=source_id,

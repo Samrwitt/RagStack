@@ -52,6 +52,44 @@ class GitHubConnector:
         self._checkpoint["last_sync_at"] = datetime.now(UTC).isoformat()
 
     async def fetch(self, source_id: str) -> FetchedContent:
+        if source_id not in self._items:
+            parts = source_id.split(":")
+            if len(parts) >= 3 and parts[0] == "github":
+                kind = parts[1]
+                rest = ":".join(parts[2:])
+                if kind == "file":
+                    # rest format: owner/repo/path
+                    repo_prefix = f"{self.owner}/{self.repo}/"
+                    path = rest[len(repo_prefix):] if rest.startswith(repo_prefix) else rest
+                    record = {
+                        "kind": "file",
+                        "path": path,
+                        "title": path.rsplit("/", 1)[-1],
+                        "html_url": f"https://github.com/{self.owner}/{self.repo}/blob/{self.branch}/{path}",
+                    }
+                    self._items[source_id] = record
+                elif kind in {"issues", "pulls"}:
+                    # rest format: owner/repo/number
+                    number = rest.rsplit("/", 1)[-1]
+                    timeout = float(self.config.get("timeout_seconds", 30))
+                    async with httpx.AsyncClient(timeout=timeout) as client:
+                        resp = await client.get(
+                            f"{self.api_base}/repos/{self.owner}/{self.repo}/{kind}/{number}",
+                            headers=self._headers(),
+                        )
+                        resp.raise_for_status()
+                        row = resp.json()
+                        record = {
+                            "kind": kind,
+                            "number": row.get("number"),
+                            "title": row.get("title") or source_id,
+                            "body": row.get("body") or "",
+                            "state": row.get("state"),
+                            "html_url": row.get("html_url"),
+                            "updated_at": row.get("updated_at"),
+                        }
+                        self._items[source_id] = record
+
         item = self._items[source_id]
         if item["kind"] == "file":
             data = await self._fetch_file(item)
@@ -148,11 +186,19 @@ class GitHubConnector:
     ) -> AsyncIterator[DiscoveredItem]:
         page = 1
         cursor_key = f"{kind}_updated_at"
-        latest = checkpoint.get(cursor_key)
-        while True:
-            params: dict[str, Any] = {"state": "all", "per_page": 100, "page": page}
-            if checkpoint.get(cursor_key):
-                params["since"] = checkpoint[cursor_key]
+        since = checkpoint.get(cursor_key)
+        latest = since
+        stop_paging = False
+        while not stop_paging:
+            params: dict[str, Any] = {
+                "state": "all",
+                "per_page": 100,
+                "page": page,
+                "sort": "updated",
+                "direction": "desc",
+            }
+            if kind == "issues" and since:
+                params["since"] = since
             response = await client.get(
                 f"{self.api_base}/repos/{self.owner}/{self.repo}/{kind}",
                 params=params,
@@ -163,6 +209,10 @@ class GitHubConnector:
             if not rows:
                 break
             for row in rows:
+                updated_at_str = str(row.get("updated_at") or "")
+                if since and updated_at_str and updated_at_str <= str(since):
+                    stop_paging = True
+                    break
                 source_id = f"github:{kind}:{self.owner}/{self.repo}/{row['number']}"
                 record = {
                     "kind": kind,

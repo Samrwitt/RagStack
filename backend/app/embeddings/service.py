@@ -200,6 +200,7 @@ class EmbeddingService:
         document = self._get_document(document_id)
         records = self._active_records_for_document(document.id)
         self.indexer.delete_points(record.qdrant_point_id for record in records)
+        self.indexer.delete_by_payload("document_id", str(document.id))
         deleted_at = _utcnow()
         for record in records:
             record.status = EMBEDDING_RECORD_STATUS_DELETED

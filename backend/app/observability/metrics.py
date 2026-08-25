@@ -1,10 +1,27 @@
-"""Small Prometheus-compatible metrics registry."""
+"""Prometheus and OpenTelemetry metrics registry."""
 
 from __future__ import annotations
 
 from collections import defaultdict
 from collections.abc import Mapping
 from threading import Lock
+from typing import Any
+
+try:
+    import prometheus_client
+    from prometheus_client import CollectorRegistry, Counter, Gauge, Summary, generate_latest, REGISTRY
+    HAS_PROMETHEUS = True
+except ImportError:  # pragma: no cover
+    HAS_PROMETHEUS = False
+    REGISTRY = None  # type: ignore[assignment]
+
+try:
+    from opentelemetry import metrics as otel_metrics
+    _otel_meter = otel_metrics.get_meter("corpusforge")
+    HAS_OTEL = True
+except ImportError:  # pragma: no cover
+    HAS_OTEL = False
+    _otel_meter = None
 
 INGEST_DOCUMENTS_DISCOVERED = "corpusforge_ingest_documents_discovered_total"
 INGEST_DOCUMENTS_PROCESSED = "corpusforge_ingest_documents_processed_total"
@@ -34,6 +51,12 @@ _observations: defaultdict[_MetricKey, dict[str, float]] = defaultdict(
     lambda: {"count": 0.0, "sum": 0.0}
 )
 
+_prom_counters: dict[str, Any] = {}
+_prom_gauges: dict[str, Any] = {}
+_prom_summaries: dict[str, Any] = {}
+_otel_counters: dict[str, Any] = {}
+_otel_histograms: dict[str, Any] = {}
+
 
 def increment(
     name: str,
@@ -41,8 +64,31 @@ def increment(
     *,
     labels: Mapping[str, object] | None = None,
 ) -> None:
+    lbl_dict = {str(k): str(v) for k, v in (labels or {}).items()}
     with _lock:
         _counters[_key(name, labels)] += amount
+
+        if HAS_PROMETHEUS:
+            try:
+                if name not in _prom_counters:
+                    _prom_counters[name] = Counter(
+                        name, f"Metric {name}", labelnames=list(lbl_dict.keys())
+                    )
+                counter_obj = _prom_counters[name]
+                if lbl_dict:
+                    counter_obj.labels(**lbl_dict).inc(amount)
+                else:
+                    counter_obj.inc(amount)
+            except Exception:  # pragma: no cover
+                pass
+
+        if HAS_OTEL and _otel_meter is not None:
+            try:
+                if name not in _otel_counters:
+                    _otel_counters[name] = _otel_meter.create_counter(name)
+                _otel_counters[name].add(amount, attributes=lbl_dict)
+            except Exception:  # pragma: no cover
+                pass
 
 
 def set_gauge(
@@ -51,8 +97,23 @@ def set_gauge(
     *,
     labels: Mapping[str, object] | None = None,
 ) -> None:
+    lbl_dict = {str(k): str(v) for k, v in (labels or {}).items()}
     with _lock:
         _gauges[_key(name, labels)] = value
+
+        if HAS_PROMETHEUS:
+            try:
+                if name not in _prom_gauges:
+                    _prom_gauges[name] = Gauge(
+                        name, f"Metric {name}", labelnames=list(lbl_dict.keys())
+                    )
+                gauge_obj = _prom_gauges[name]
+                if lbl_dict:
+                    gauge_obj.labels(**lbl_dict).set(value)
+                else:
+                    gauge_obj.set(value)
+            except Exception:  # pragma: no cover
+                pass
 
 
 def observe(
@@ -61,15 +122,47 @@ def observe(
     *,
     labels: Mapping[str, object] | None = None,
 ) -> None:
+    lbl_dict = {str(k): str(v) for k, v in (labels or {}).items()}
     with _lock:
         bucket = _observations[_key(name, labels)]
         bucket["count"] += 1
         bucket["sum"] += value
 
+        if HAS_PROMETHEUS:
+            try:
+                if name not in _prom_summaries:
+                    _prom_summaries[name] = Summary(
+                        name, f"Metric {name}", labelnames=list(lbl_dict.keys())
+                    )
+                summary_obj = _prom_summaries[name]
+                if lbl_dict:
+                    summary_obj.labels(**lbl_dict).observe(value)
+                else:
+                    summary_obj.observe(value)
+            except Exception:  # pragma: no cover
+                pass
+
+        if HAS_OTEL and _otel_meter is not None:
+            try:
+                if name not in _otel_histograms:
+                    _otel_histograms[name] = _otel_meter.create_histogram(name)
+                _otel_histograms[name].record(value, attributes=lbl_dict)
+            except Exception:  # pragma: no cover
+                pass
+
 
 def render_prometheus(metrics: dict[str, float] | None = None) -> str:
     if metrics is not None:
         return "\n".join(f"{name} {value}" for name, value in sorted(metrics.items())) + "\n"
+
+    if HAS_PROMETHEUS and REGISTRY is not None:
+        try:
+            prom_output = generate_latest(REGISTRY).decode("utf-8")
+            if prom_output.strip():
+                return prom_output
+        except Exception:  # pragma: no cover
+            pass
+
     lines: list[str] = []
     with _lock:
         counters = dict(_counters)

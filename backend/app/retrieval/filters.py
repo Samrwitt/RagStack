@@ -5,6 +5,7 @@ from __future__ import annotations
 from sqlalchemy import Select
 
 from app.models.document import Document, DocumentVersion
+from app.models.enums import DocumentState
 from app.retrieval.models import RetrievalFilters
 
 
@@ -13,6 +14,7 @@ def apply_document_filters(stmt: Select, filters: RetrievalFilters) -> Select:
         Document.organization_id == filters.organization_id,
         DocumentVersion.is_current.is_(True),
         Document.deleted_at.is_(None),
+        Document.current_state != DocumentState.DELETED.value,
     )
     if filters.workspace_id is not None:
         stmt = stmt.where(Document.workspace_id == filters.workspace_id)

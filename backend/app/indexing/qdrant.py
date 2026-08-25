@@ -52,10 +52,15 @@ except ModuleNotFoundError:  # pragma: no cover - lets unit tests use fake clien
     class _PointIdsList:
         points: list[str]
 
+    @dataclass(frozen=True, slots=True)
+    class _FilterSelector:
+        filter: object
+
     class qmodels:  # type: ignore[no-redef]
         Distance = _Distance
         FieldCondition = _FieldCondition
         Filter = _Filter
+        FilterSelector = _FilterSelector
         MatchAny = _MatchAny
         MatchValue = _MatchValue
         PayloadSchemaType = _PayloadSchemaType
@@ -126,6 +131,25 @@ class QdrantIndexer:
             collection_name=self.collection_name,
             points_selector=qmodels.PointIdsList(points=ids),
         )
+
+    def delete_by_payload(self, field_name: str, value: Any) -> None:
+        if not self._collection_exists():
+            return
+        query_filter = qmodels.Filter(
+            must=[qmodels.FieldCondition(key=field_name, match=qmodels.MatchValue(value=value))]
+        )
+        selector = (
+            qmodels.FilterSelector(filter=query_filter)
+            if hasattr(qmodels, "FilterSelector")
+            else query_filter
+        )
+        try:
+            self.client.delete(
+                collection_name=self.collection_name,
+                points_selector=selector,
+            )
+        except Exception:
+            pass
 
     def search(
         self,

@@ -12,7 +12,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID, uuid4
 
-from sqlalchemy import Select, delete, or_, select
+from sqlalchemy import Select, delete, or_, select, update
 from sqlalchemy.orm import Session, selectinload
 
 from app.chunking.models import BlockInput
@@ -173,6 +173,18 @@ class IngestionService:
         source = self.get_source(organization_id, source_id)
         source.status = SourceStatus.DISCONNECTED.value
         source.updated_at = _utcnow()
+        docs = list(
+            self.session.scalars(
+                select(Document).where(
+                    Document.organization_id == organization_id,
+                    Document.source_connection_id == source_id,
+                    Document.current_state != DocumentState.DELETED.value,
+                )
+            ).all()
+        )
+        for doc in docs:
+            self.delete_document(organization_id, doc.id)
+        source.document_count = 0
 
     def list_documents(
         self,
@@ -647,6 +659,13 @@ class IngestionService:
             self._delete_document_vectors(document.id)
             self._set_state(document, DocumentState.DELETED)
             document.deleted_at = _utcnow()
+            for version in document.versions:
+                version.is_current = False
+            self.session.execute(
+                update(DocumentChunk)
+                .where(DocumentChunk.document_id == document.id)
+                .values(search_vector=None)
+            )
             source = self.session.get(SourceConnection, document.source_connection_id)
             if source is not None and source.document_count > 0:
                 source.document_count -= 1
