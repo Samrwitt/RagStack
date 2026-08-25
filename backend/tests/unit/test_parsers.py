@@ -4,8 +4,20 @@ from io import BytesIO
 from pathlib import Path
 
 import pytest
-from docx import Document as DocxDocument
-from fpdf import FPDF
+try:
+    from docx import Document as DocxDocument
+except ImportError:
+    DocxDocument = None
+
+try:
+    from fpdf import FPDF
+except ImportError:
+    FPDF = None
+
+try:
+    import pdfplumber
+except ImportError:
+    pdfplumber = None
 
 from app.parsers.errors import PermanentParseError, UnsupportedMimeError
 from app.parsers.models import BlockType, RawDocument
@@ -27,13 +39,15 @@ def test_registry_selects_parser_by_mime() -> None:
     assert registry.select("text/plain").name == "txt"
     assert registry.select("text/markdown").name == "markdown"
     assert registry.select("text/html").name == "html"
-    assert registry.select("application/pdf").name == "pdf"
-    assert (
-        registry.select(
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-        ).name
-        == "docx"
-    )
+    if pdfplumber is not None:
+        assert registry.select("application/pdf").name == "pdf"
+    if DocxDocument is not None:
+        assert (
+            registry.select(
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            ).name
+            == "docx"
+        )
     with pytest.raises(UnsupportedMimeError):
         registry.select("image/png")
 
@@ -129,6 +143,7 @@ def test_html_parser_strips_scripts_and_walks_structure() -> None:
     assert parsed.title == "Runbook"
 
 
+@pytest.mark.skipif(DocxDocument is None, reason="python-docx not installed")
 def test_docx_parser_reads_headings_and_tables() -> None:
     document = DocxDocument()
     document.add_heading("Payment Service", level=1)
@@ -157,6 +172,7 @@ def test_docx_parser_reads_headings_and_tables() -> None:
     assert "amount" in table_block.text
 
 
+@pytest.mark.skipif(FPDF is None or pdfplumber is None, reason="fpdf or pdfplumber not installed")
 def test_pdf_parser_extracts_digital_text_without_ocr() -> None:
     pdf = FPDF()
     pdf.add_page()
@@ -178,6 +194,7 @@ def test_should_ocr_only_when_text_is_sparse() -> None:
     assert should_ocr(5000, 2, min_chars_per_page=40) is False
 
 
+@pytest.mark.skipif(pdfplumber is None, reason="pdfplumber not installed")
 def test_corrupt_pdf_is_permanent() -> None:
     with pytest.raises(PermanentParseError):
         get_parser_registry().parse(_raw("application/pdf", b"%PDF-not-really", "bad.pdf"))

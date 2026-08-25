@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from time import perf_counter
+from typing import Any
 
 from sqlalchemy.orm import Session
 
@@ -59,6 +60,70 @@ class RetrievalService:
             hits,
             token_budget=request.context_token_budget,
         )
+
+    def search_debug(
+        self,
+        request: RetrievalRequest,
+    ) -> dict[str, Any]:
+        candidate_k = request.candidate_k if request.rerank else request.top_k
+        dense_req = self._candidate_request(request, RetrievalMode.DENSE, candidate_k)
+        sparse_req = self._candidate_request(request, RetrievalMode.SPARSE, candidate_k)
+
+        t0 = perf_counter()
+        dense_hits = self.dense.search(dense_req)
+        t_dense = (perf_counter() - t0) * 1000
+
+        t0 = perf_counter()
+        sparse_hits = self.bm25.search(sparse_req)
+        t_sparse = (perf_counter() - t0) * 1000
+
+        t0 = perf_counter()
+        rrf_hits = reciprocal_rank_fusion([dense_hits, sparse_hits], top_k=candidate_k)
+        t_rrf = (perf_counter() - t0) * 1000
+
+        if request.mode == RetrievalMode.DENSE:
+            candidates = dense_hits
+        elif request.mode == RetrievalMode.SPARSE:
+            candidates = sparse_hits
+        else:
+            candidates = rrf_hits
+
+        t0 = perf_counter()
+        if request.rerank and self.settings.reranker_enabled:
+            reranked_hits = self.reranking.rerank(
+                query=request.query,
+                candidates=candidates,
+                top_k=request.top_k,
+            )
+        else:
+            reranked_hits = [
+                self._with_rank(hit, rank)
+                for rank, hit in enumerate(candidates[: request.top_k], start=1)
+            ]
+        t_rerank = (perf_counter() - t0) * 1000
+
+        selected = self.reranking.select_context(
+            reranked_hits,
+            token_budget=request.context_token_budget,
+        )
+        final_context = [item.hit for item in selected]
+
+        return {
+            "query": request.query,
+            "mode": request.mode.value,
+            "dense_hits": dense_hits,
+            "sparse_hits": sparse_hits,
+            "rrf_hits": rrf_hits,
+            "reranked_hits": reranked_hits,
+            "final_context": final_context,
+            "latency_ms": {
+                "dense": round(t_dense, 2),
+                "sparse": round(t_sparse, 2),
+                "rrf": round(t_rrf, 2),
+                "rerank": round(t_rerank, 2),
+                "total": round(t_dense + t_sparse + t_rrf + t_rerank, 2),
+            },
+        }
 
     def _retrieve_candidates(self, request: RetrievalRequest) -> list[RetrievalHit]:
         candidate_k = request.candidate_k if request.rerank else request.top_k

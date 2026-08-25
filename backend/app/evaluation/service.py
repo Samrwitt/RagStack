@@ -8,8 +8,10 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.evaluation.metrics import (
+    answer_relevance,
     citation_completeness,
     citation_correctness,
+    faithfulness,
     groundedness,
     mean,
     mrr,
@@ -47,6 +49,8 @@ class EvaluationService:
             "mrr": [],
             "ndcg_at_k": [],
             "groundedness": [],
+            "faithfulness": [],
+            "answer_relevance": [],
             "citation_correctness": [],
             "citation_completeness": [],
         }
@@ -64,6 +68,7 @@ class EvaluationService:
             hits, context = retrieval.search_with_context(request)
             retrieved_doc_ids = [str(hit.document_id) for hit in hits]
             relevant = {str(item) for item in record.relevant_document_ids}
+            context_texts = [item.hit.text for item in context]
             row = {
                 "question": record.question,
                 "expected_answer": record.expected_answer,
@@ -90,9 +95,10 @@ class EvaluationService:
                     {
                         "answer": answer.answer,
                         "evidence_status": answer.evidence_status.value,
-                        "groundedness": groundedness(
-                            answer.answer,
-                            [item.hit.text for item in context],
+                        "groundedness": groundedness(answer.answer, context_texts),
+                        "faithfulness": faithfulness(answer.answer, context_texts),
+                        "answer_relevance": answer_relevance(
+                            answer.answer, record.question, record.expected_answer
                         ),
                         "citation_correctness": citation_correctness(cited, relevant),
                         "citation_completeness": citation_completeness(cited, relevant),
@@ -115,6 +121,31 @@ class EvaluationService:
         self.session.add(run)
         self.session.flush()
         return run
+
+    def run_experiment(
+        self,
+        *,
+        organization_id: UUID,
+        name: str,
+        dataset: list[EvalRecord],
+        acl: ACLContext | None = None,
+    ) -> list[EvaluationRun]:
+        configs = [
+            ("Dense Only", EvaluationConfig(mode="dense", rerank=False, generate=True)),
+            ("Hybrid Only", EvaluationConfig(mode="hybrid", rerank=False, generate=True)),
+            ("Hybrid + Reranker", EvaluationConfig(mode="hybrid", rerank=True, generate=True)),
+        ]
+        runs: list[EvaluationRun] = []
+        for variant_label, cfg in configs:
+            run_obj = self.run(
+                organization_id=organization_id,
+                name=f"{name} ({variant_label})",
+                dataset=dataset,
+                config=cfg,
+                acl=acl,
+            )
+            runs.append(run_obj)
+        return runs
 
     def list_runs(self, organization_id: UUID) -> list[EvaluationRun]:
         return list(

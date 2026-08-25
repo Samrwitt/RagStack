@@ -12,7 +12,9 @@ from app.generation.models import ChatMessage, EvidenceStatus, GroundedAnswer
 from app.generation.providers import LLMProvider, get_llm_provider
 from app.observability.metrics import (
     GENERATION_FAILURES,
+    GENERATION_INPUT_TOKENS,
     GENERATION_LATENCY_SECONDS,
+    GENERATION_OUTPUT_TOKENS,
     increment,
     observe,
 )
@@ -71,6 +73,12 @@ class GenerationService:
             answer = self.provider.answer(question=question, context=context)
             answer_context = answer.context or context
             citations = resolve_citations(answer_context)
+
+            input_tokens = len(question.split()) + sum(len(item.text.split()) for item in context)
+            output_tokens = len(answer.answer.split())
+            increment(GENERATION_INPUT_TOKENS, float(input_tokens), labels=labels)
+            increment(GENERATION_OUTPUT_TOKENS, float(output_tokens), labels=labels)
+
             return GroundedAnswer(
                 answer=answer.answer,
                 evidence_status=answer.evidence_status,

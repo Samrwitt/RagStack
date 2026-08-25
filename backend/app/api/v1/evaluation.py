@@ -35,6 +35,21 @@ def run_evaluation(
     return EvaluationRunRead.model_validate(run)
 
 
+@router.post("/experiment", response_model=list[EvaluationRunRead])
+def run_experiment(
+    payload: EvaluationRunCreate,
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_permission(Permission.ADMIN))],
+    session: Annotated[Session, Depends(get_sync_session)],
+) -> list[EvaluationRunRead]:
+    runs = EvaluationService(session).run_experiment(
+        organization_id=principal.organization.id,
+        name=payload.name,
+        dataset=payload.dataset,
+        acl=principal.acl,
+    )
+    return [EvaluationRunRead.model_validate(item) for item in runs]
+
+
 @router.get("/runs", response_model=list[EvaluationRunRead])
 def list_evaluation_runs(
     principal: Annotated[AuthenticatedPrincipal, Depends(require_permission(Permission.READ))],

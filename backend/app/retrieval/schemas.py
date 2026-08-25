@@ -41,3 +41,15 @@ class SearchResponse(BaseModel):
     mode: str
     hits: list[SearchHitRead]
     context: list[SearchHitRead] = Field(default_factory=list)
+
+
+class SearchDebugResponse(BaseModel):
+    query: str
+    mode: str
+    dense_hits: list[SearchHitRead] = Field(default_factory=list)
+    sparse_hits: list[SearchHitRead] = Field(default_factory=list)
+    rrf_hits: list[SearchHitRead] = Field(default_factory=list)
+    reranked_hits: list[SearchHitRead] = Field(default_factory=list)
+    final_context: list[SearchHitRead] = Field(default_factory=list)
+    latency_ms: dict[str, float] = Field(default_factory=dict)
+

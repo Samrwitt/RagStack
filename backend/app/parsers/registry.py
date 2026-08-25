@@ -12,10 +12,18 @@ from app.parsers.txt import TxtParser
 
 
 def default_parsers() -> list[DocumentParser]:
-    from app.parsers.docx import DocxParser
-    from app.parsers.pdf import PdfParser
-
-    return [TxtParser(), MarkdownParser(), HtmlParser(), DocxParser(), PdfParser()]
+    parsers: list[DocumentParser] = [TxtParser(), MarkdownParser(), HtmlParser()]
+    try:
+        from app.parsers.docx import DocxParser
+        parsers.append(DocxParser())
+    except ImportError:
+        pass
+    try:
+        from app.parsers.pdf import PdfParser
+        parsers.append(PdfParser())
+    except ImportError:
+        pass
+    return parsers
 
 
 class ParserRegistry:

@@ -12,10 +12,10 @@ import {
 } from "lucide-react";
 import type { ReactNode } from "react";
 import type { Document, HealthReport, Job, Source } from "./api";
-<<<<<<< Updated upstream
-=======
 import { ChatClient } from "./chat-client";
->>>>>>> Stashed changes
+import { EvaluationClient } from "./evaluation/evaluation-client";
+import { RetrievalDebuggerClient } from "./retrieval/retrieval-client";
+import { SettingsClient } from "./settings/settings-client";
 
 const nav = [
   { label: "Overview", href: "/", icon: Activity },
@@ -177,15 +177,7 @@ export function ChatPanel({ wide = false }: { wide?: boolean }) {
   return (
     <div className={wide ? "panel wide" : "panel"}>
       <PanelTitle title="Chat" />
-<<<<<<< Updated upstream
-      <div className="chat">
-        <p className="question">How many annual leave days do employees receive?</p>
-        <p className="answer">Employees receive 22 annual leave days. [1]</p>
-        <span className="citation">[1] Handbook, Leave, page 3</span>
-      </div>
-=======
       <ChatClient />
->>>>>>> Stashed changes
     </div>
   );
 }
@@ -194,12 +186,7 @@ export function RetrievalPanel({ wide = false }: { wide?: boolean }) {
   return (
     <div className={wide ? "panel wide" : "panel"}>
       <PanelTitle title="Retrieval Debugger" />
-      <ol className="trace">
-        <li>Query rewrite: annual leave entitlement</li>
-        <li>Filters: org, workspace, current version, ACL</li>
-        <li>Hybrid: dense 50 + BM25 50</li>
-        <li>Rerank: 50 to 8</li>
-      </ol>
+      <RetrievalDebuggerClient />
     </div>
   );
 }
@@ -218,11 +205,7 @@ export function EvaluationPanel({
   return (
     <div className={wide ? "panel wide" : "panel"}>
       <PanelTitle title="Evaluation" />
-      <div className="bars">
-        <Bar label="Healthy checks" value={healthPercentage(health)} />
-        <Bar label="Indexed docs" value={percentage(countIndexedDocuments(documents), documents.length)} />
-        <Bar label="Connected sources" value={percentage(countConnectedSources(sources), sources.length)} />
-      </div>
+      <EvaluationClient />
     </div>
   );
 }
@@ -272,20 +255,7 @@ export function SettingsPanel({ wide = false }: { wide?: boolean }) {
   return (
     <div className={wide ? "panel wide" : "panel"}>
       <PanelTitle title="Settings" />
-      <div className="settings">
-        <label>
-          <input type="checkbox" defaultChecked />
-          Reranking
-        </label>
-        <label>
-          <input type="checkbox" defaultChecked />
-          ACL enforcement
-        </label>
-        <label>
-          <input type="checkbox" defaultChecked />
-          Rate limiting
-        </label>
-      </div>
+      <SettingsClient />
     </div>
   );
 }

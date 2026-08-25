@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from app.api.v1.deps import AuthenticatedPrincipal, get_sync_session, require_permission
 from app.auth.rbac import Permission
 from app.retrieval.models import RetrievalFilters, RetrievalMode, RetrievalRequest
-from app.retrieval.schemas import SearchHitRead, SearchRequest, SearchResponse
+from app.retrieval.schemas import SearchDebugResponse, SearchHitRead, SearchRequest, SearchResponse
 from app.retrieval.service import RetrievalService
 
 router = APIRouter(prefix="/search", tags=["search"])
@@ -52,4 +52,43 @@ def search(
         mode=payload.mode,
         hits=[SearchHitRead(**asdict(hit)) for hit in hits],
         context=[SearchHitRead(**asdict(item.hit)) for item in context],
+    )
+
+
+@router.post("/debug", response_model=SearchDebugResponse)
+def search_debug(
+    payload: SearchRequest,
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_permission(Permission.READ))],
+    session: Annotated[Session, Depends(get_sync_session)],
+) -> SearchDebugResponse:
+    request = RetrievalRequest(
+        query=payload.query,
+        mode=RetrievalMode(payload.mode),
+        top_k=payload.top_k,
+        candidate_k=payload.candidate_k,
+        filters=RetrievalFilters(
+            organization_id=principal.organization.id,
+            workspace_id=payload.workspace_id,
+            source_connection_id=payload.source_connection_id,
+            source_type=payload.source_type,
+            document_ids=tuple(payload.document_ids),
+            language=payload.language,
+        ),
+        acl=principal.acl,
+        rerank=payload.rerank,
+        context_token_budget=payload.context_token_budget,
+    )
+    try:
+        debug_res = RetrievalService(session).search_debug(request)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    return SearchDebugResponse(
+        query=debug_res["query"],
+        mode=debug_res["mode"],
+        dense_hits=[SearchHitRead(**asdict(hit)) for hit in debug_res["dense_hits"]],
+        sparse_hits=[SearchHitRead(**asdict(hit)) for hit in debug_res["sparse_hits"]],
+        rrf_hits=[SearchHitRead(**asdict(hit)) for hit in debug_res["rrf_hits"]],
+        reranked_hits=[SearchHitRead(**asdict(hit)) for hit in debug_res["reranked_hits"]],
+        final_context=[SearchHitRead(**asdict(hit)) for hit in debug_res["final_context"]],
+        latency_ms=debug_res["latency_ms"],
     )

@@ -38,8 +38,6 @@ export type Job = {
   created_at: string;
 };
 
-<<<<<<< Updated upstream
-=======
 export type ChatMessage = {
   role: "user" | "assistant" | "system";
   content: string;
@@ -65,7 +63,57 @@ export type ChatResponse = {
   context: Record<string, unknown>[];
 };
 
->>>>>>> Stashed changes
+export type SearchHit = {
+  chunk_id: string;
+  document_id: string;
+  version_id: string;
+  score: number;
+  rank: number;
+  text: string;
+  title: string;
+  source_type: string;
+  source_url: string | null;
+  page: number | null;
+  section: string | null;
+  metadata: Record<string, unknown>;
+  scores: Record<string, number>;
+};
+
+export type SearchDebugResponse = {
+  query: string;
+  mode: string;
+  dense_hits: SearchHit[];
+  sparse_hits: SearchHit[];
+  rrf_hits: SearchHit[];
+  reranked_hits: SearchHit[];
+  final_context: SearchHit[];
+  latency_ms: Record<string, number>;
+};
+
+export type EvalRecord = {
+  question: string;
+  expected_answer: string;
+  relevant_document_ids: string[];
+};
+
+export type EvalRun = {
+  id: string;
+  name: string;
+  status: string;
+  config: Record<string, unknown>;
+  metrics: Record<string, number>;
+  results: Record<string, unknown>[];
+};
+
+export type SettingsConfig = {
+  reranker_enabled: boolean;
+  reranker_provider: string;
+  llm_provider: string;
+  reranker_candidate_k: number;
+  context_token_budget: number;
+  min_grounding_score: number;
+};
+
 export type DashboardData = {
   health: HealthReport | null;
   sources: Source[];
@@ -74,12 +122,15 @@ export type DashboardData = {
   error: string | null;
 };
 
-async function apiFetch<T>(path: string): Promise<T> {
+async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
   const response = await fetch(`${apiBaseUrl}${path}`, {
     cache: "no-store",
     headers: {
-      Accept: "application/json"
-    }
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      ...options?.headers
+    },
+    ...options
   });
 
   if (!response.ok) {

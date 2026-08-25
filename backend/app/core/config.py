@@ -22,7 +22,7 @@ class Settings(BaseSettings):
         case_sensitive=False,
     )
 
-    app_name: str = "CorpusForge"
+    app_name: str = "RagStack"
     app_env: Literal["development", "staging", "production", "test"] = "development"
     debug: bool = False
     secret_key: str = "dev-only-change-me"
@@ -35,9 +35,9 @@ class Settings(BaseSettings):
 
     postgres_host: str = "localhost"
     postgres_port: int = 5432
-    postgres_user: str = "corpusforge"
-    postgres_password: str = "corpusforge"
-    postgres_db: str = "corpusforge"
+    postgres_user: str = "ragstack"
+    postgres_password: str = "ragstack"
+    postgres_db: str = "ragstack"
     postgres_pool_size: int = 5
     postgres_max_overflow: int = 10
 
@@ -50,7 +50,7 @@ class Settings(BaseSettings):
     s3_endpoint_url: str = "http://localhost:9000"
     s3_access_key: str = "minioadmin"
     s3_secret_key: str = "minioadmin"
-    s3_bucket: str = "corpusforge"
+    s3_bucket: str = "ragstack"
     s3_region: str = "us-east-1"
     s3_secure: bool | None = None
 
@@ -84,7 +84,7 @@ class Settings(BaseSettings):
     openai_timeout_seconds: float = 30.0
     llm_model: str = "gpt-4o-mini"
     llm_max_tokens: int = 700
-    qdrant_collection: str = "corpusforge_chunks"
+    qdrant_collection: str = "ragstack_chunks"
     reranker_provider: str = "cohere"
     reranker_enabled: bool = True
     reranker_candidate_k: int = 50
