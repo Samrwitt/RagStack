@@ -24,6 +24,10 @@ def test_acl_allows_public_user_group_and_denies_mismatch() -> None:
         ACLContext(user_id="u1"),
     )
     assert can_read_document(
+        {"allowed_users": ["person@example.com"], "allowed_groups": []},
+        ACLContext(user_email="person@example.com"),
+    )
+    assert can_read_document(
         {"allowed_users": [], "allowed_groups": ["engineering"]},
         ACLContext(group_ids=frozenset({"engineering"})),
     )
@@ -74,8 +78,7 @@ def test_qdrant_filter_contains_metadata_and_acl_conditions() -> None:
     )
 
     must_keys = {condition.key for condition in compiled.must}
-    should_keys = {condition.key for condition in compiled.should}
     assert {"organization_id", "workspace_id", "source_type", "language", "is_current"}.issubset(
         must_keys
     )
-    assert should_keys == {"allowed_users", "allowed_groups"}
+    assert compiled.should is None

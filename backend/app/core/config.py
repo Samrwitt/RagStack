@@ -26,6 +26,8 @@ class Settings(BaseSettings):
     app_env: Literal["development", "staging", "production", "test"] = "development"
     debug: bool = False
     secret_key: str = "dev-only-change-me"
+    access_token_expire_minutes: int = 60 * 8
+    credential_encryption_key: str = ""
     api_v1_prefix: str = "/api/v1"
     cors_origins: str = "http://localhost:3000"
     log_level: str = "INFO"
@@ -96,6 +98,11 @@ class Settings(BaseSettings):
     rate_limit_enabled: bool = True
     rate_limit_requests: int = 120
     rate_limit_window_seconds: int = 60
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def credential_key_material(self) -> str:
+        return self.credential_encryption_key or self.secret_key
 
     @computed_field  # type: ignore[prop-decorator]
     @property

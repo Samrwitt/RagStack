@@ -9,6 +9,7 @@ from app.retrieval.models import ACLContext, RetrievalFilters
 
 
 def qdrant_filter(filters: RetrievalFilters, acl: ACLContext) -> Any:
+    del acl
     must = [
         _match_value("organization_id", str(filters.organization_id)),
         _match_value("is_current", True),
@@ -24,12 +25,7 @@ def qdrant_filter(filters: RetrievalFilters, acl: ACLContext) -> Any:
     if filters.language is not None:
         must.append(_match_value("language", filters.language))
 
-    should = []
-    if acl.user_id is not None:
-        should.append(_match_any("allowed_users", [acl.user_id]))
-    if acl.group_ids:
-        should.append(_match_any("allowed_groups", sorted(acl.group_ids)))
-    return qmodels.Filter(must=must, should=should or None)
+    return qmodels.Filter(must=must, should=None)
 
 
 def _match_value(key: str, value: object) -> Any:

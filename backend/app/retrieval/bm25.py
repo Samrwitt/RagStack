@@ -33,7 +33,7 @@ class PostgresSparseRetriever:
             .join(DocumentVersion, DocumentChunk.version_id == DocumentVersion.id)
             .where(DocumentChunk.search_vector.op("@@")(tsquery))
             .order_by(score.desc(), DocumentChunk.ordinal.asc())
-            .limit(request.candidate_k)
+            .limit(request.candidate_k * 3)
         )
         stmt = apply_document_filters(stmt, request.filters)
         rows = self.session.execute(stmt).all()

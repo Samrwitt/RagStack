@@ -13,4 +13,6 @@ def can_read_document(permissions: dict, acl: ACLContext) -> bool:
         return True
     if acl.user_id is not None and acl.user_id in allowed_users:
         return True
+    if acl.user_email is not None and acl.user_email.lower() in allowed_users:
+        return True
     return bool(allowed_groups.intersection(acl.group_ids))

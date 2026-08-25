@@ -6,34 +6,39 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.api.v1.deps import get_current_organization, get_ingestion_service, get_sync_session
+from app.api.v1.deps import (
+    AuthenticatedPrincipal,
+    get_ingestion_service,
+    get_sync_session,
+    require_permission,
+)
+from app.auth.rbac import Permission
 from app.embeddings.schemas import EmbeddingTaskRead, StaleEmbeddingRead
 from app.embeddings.service import EmbeddingService
 from app.ingestion.errors import NotFoundError
 from app.ingestion.service import IngestionService
-from app.models.organization import Organization
 
 router = APIRouter(prefix="/embeddings", tags=["embeddings"])
 
 
 @router.get("/stale", response_model=StaleEmbeddingRead)
 def list_stale_embeddings(
-    org: Annotated[Organization, Depends(get_current_organization)],
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_permission(Permission.ADMIN))],
     session: Annotated[Session, Depends(get_sync_session)],
 ) -> StaleEmbeddingRead:
     service = EmbeddingService(session)
-    document_ids = service.stale_document_ids(org.id)
+    document_ids = service.stale_document_ids(principal.organization.id)
     return StaleEmbeddingRead(document_ids=document_ids, count=len(document_ids))
 
 
 @router.post("/documents/{document_id}", response_model=EmbeddingTaskRead)
 def enqueue_document_embedding(
     document_id: UUID,
-    org: Annotated[Organization, Depends(get_current_organization)],
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_permission(Permission.WRITE))],
     ingestion: Annotated[IngestionService, Depends(get_ingestion_service)],
 ) -> EmbeddingTaskRead:
     try:
-        ingestion.get_document(org.id, document_id)
+        ingestion.get_document(principal.organization.id, document_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     from app.workers.embedding import embed_document
@@ -49,11 +54,11 @@ def enqueue_document_embedding(
 @router.delete("/documents/{document_id}/vectors", response_model=EmbeddingTaskRead)
 def enqueue_document_vector_delete(
     document_id: UUID,
-    org: Annotated[Organization, Depends(get_current_organization)],
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_permission(Permission.ADMIN))],
     ingestion: Annotated[IngestionService, Depends(get_ingestion_service)],
 ) -> EmbeddingTaskRead:
     try:
-        ingestion.get_document(org.id, document_id)
+        ingestion.get_document(principal.organization.id, document_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     from app.workers.embedding import delete_document_vectors

@@ -16,6 +16,7 @@ class RetrievalMode(StrEnum):
 @dataclass(frozen=True, slots=True)
 class ACLContext:
     user_id: str | None = None
+    user_email: str | None = None
     group_ids: frozenset[str] = frozenset()
 
 

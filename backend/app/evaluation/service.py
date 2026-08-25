@@ -21,7 +21,7 @@ from app.evaluation.schemas import EvalRecord, EvaluationConfig
 from app.generation.models import ChatMessage
 from app.generation.service import GenerationService
 from app.models.evaluation import EvaluationRun
-from app.retrieval.models import RetrievalFilters, RetrievalMode, RetrievalRequest
+from app.retrieval.models import ACLContext, RetrievalFilters, RetrievalMode, RetrievalRequest
 from app.retrieval.service import RetrievalService
 
 
@@ -36,6 +36,7 @@ class EvaluationService:
         name: str,
         dataset: list[EvalRecord],
         config: EvaluationConfig,
+        acl: ACLContext | None = None,
     ) -> EvaluationRun:
         retrieval = RetrievalService(self.session)
         generation = GenerationService(self.session)
@@ -57,6 +58,7 @@ class EvaluationService:
                 mode=RetrievalMode(config.mode),
                 top_k=config.top_k,
                 candidate_k=config.candidate_k,
+                acl=acl or ACLContext(),
                 rerank=config.rerank,
             )
             hits, context = retrieval.search_with_context(request)
@@ -81,6 +83,7 @@ class EvaluationService:
                     top_k=config.top_k,
                     candidate_k=config.candidate_k,
                     rerank=config.rerank,
+                    acl=acl,
                 )
                 cited = [str(item.document_id) for item in answer.citations]
                 row.update(

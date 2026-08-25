@@ -6,9 +6,9 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.api.v1.deps import get_current_organization, get_sync_session
-from app.models.organization import Organization
-from app.retrieval.models import ACLContext, RetrievalFilters, RetrievalMode, RetrievalRequest
+from app.api.v1.deps import AuthenticatedPrincipal, get_sync_session, require_permission
+from app.auth.rbac import Permission
+from app.retrieval.models import RetrievalFilters, RetrievalMode, RetrievalRequest
 from app.retrieval.schemas import SearchHitRead, SearchRequest, SearchResponse
 from app.retrieval.service import RetrievalService
 
@@ -18,7 +18,7 @@ router = APIRouter(prefix="/search", tags=["search"])
 @router.post("", response_model=SearchResponse)
 def search(
     payload: SearchRequest,
-    org: Annotated[Organization, Depends(get_current_organization)],
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_permission(Permission.READ))],
     session: Annotated[Session, Depends(get_sync_session)],
 ) -> SearchResponse:
     request = RetrievalRequest(
@@ -27,17 +27,14 @@ def search(
         top_k=payload.top_k,
         candidate_k=payload.candidate_k,
         filters=RetrievalFilters(
-            organization_id=org.id,
+            organization_id=principal.organization.id,
             workspace_id=payload.workspace_id,
             source_connection_id=payload.source_connection_id,
             source_type=payload.source_type,
             document_ids=tuple(payload.document_ids),
             language=payload.language,
         ),
-        acl=ACLContext(
-            user_id=payload.user_id,
-            group_ids=frozenset(payload.group_ids),
-        ),
+        acl=principal.acl,
         rerank=payload.rerank,
         context_token_budget=payload.context_token_budget,
     )

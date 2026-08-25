@@ -93,18 +93,27 @@ Retry: `POST /api/v1/jobs/{id}/retry`. Reprocess from stored raw (no re-fetch): 
 
 ```bash
 docker compose up --build
-curl -s http://localhost:8000/api/v1/sources
+TOKEN=$(curl -s http://localhost:8000/api/v1/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"admin@example.com","password":"password"}' \
+  | python -c 'import json,sys; print(json.load(sys.stdin)["access_token"])')
+
+curl -s http://localhost:8000/api/v1/sources \
+  -H "Authorization: Bearer $TOKEN"
 
 curl -F "file=@handbook.md;filename=employee-handbook.md;type=text/markdown" \
+  -H "Authorization: Bearer $TOKEN" \
   http://localhost:8000/api/v1/documents/upload
 
 # identical bytes → unchanged: true, status SKIPPED_UNCHANGED
 # edited bytes → new version, previous is_current=false, state PARSED
 
-curl -s http://localhost:8000/api/v1/documents/{id}/blocks
+curl -s http://localhost:8000/api/v1/documents/{id}/blocks \
+  -H "Authorization: Bearer $TOKEN"
 ```
 
-Omit `X-Organization-Id` in development; the API bootstraps the Acme Systems tenant.
+Development seeds `admin@example.com` / `password` and bootstraps the Acme
+Systems tenant.
 
 See [parsing.md](parsing.md) for parser versioning, block types, and OCR policy.
 

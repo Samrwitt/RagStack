@@ -111,6 +111,18 @@ curl -s http://localhost:8000/api/v1/health
 curl -s http://localhost:8000/api/v1/health/ready
 ```
 
+Development auth seeds `admin@example.com` / `password`:
+
+```bash
+curl -s http://localhost:8000/api/v1/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"admin@example.com","password":"password"}'
+```
+
+Use the returned bearer token for protected API calls. In production,
+`Authorization: Bearer <token>` is required; development and tests keep a local
+fallback principal so the dashboard remains easy to run.
+
 | Service | URL |
 | --- | --- |
 | Frontend dashboard | http://localhost:3001 |

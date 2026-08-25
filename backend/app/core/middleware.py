@@ -57,7 +57,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 window_seconds=settings.rate_limit_window_seconds,
             )
         client_host = request.client.host if request.client else "unknown"
-        key = request.headers.get("X-Organization-Id") or client_host
+        key = request.headers.get("Authorization") or client_host
         allowed, remaining = _rate_limiter.allow(str(key))
         if not allowed:
             return JSONResponse(

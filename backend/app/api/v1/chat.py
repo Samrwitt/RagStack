@@ -6,11 +6,11 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.api.v1.deps import get_current_organization, get_sync_session
+from app.api.v1.deps import AuthenticatedPrincipal, get_sync_session, require_permission
+from app.auth.rbac import Permission
 from app.generation.models import ChatMessage
 from app.generation.schemas import ChatRequest, ChatResponse, CitationRead
 from app.generation.service import GenerationService
-from app.models.organization import Organization
 from app.retrieval.models import RetrievalFilters, RetrievalMode
 
 router = APIRouter(prefix="/chat", tags=["chat"])
@@ -19,7 +19,7 @@ router = APIRouter(prefix="/chat", tags=["chat"])
 @router.post("", response_model=ChatResponse)
 def chat(
     payload: ChatRequest,
-    org: Annotated[Organization, Depends(get_current_organization)],
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_permission(Permission.READ))],
     session: Annotated[Session, Depends(get_sync_session)],
 ) -> ChatResponse:
     try:
@@ -30,7 +30,7 @@ def chat(
                 for item in payload.history
             ],
             filters=RetrievalFilters(
-                organization_id=org.id,
+                organization_id=principal.organization.id,
                 workspace_id=payload.workspace_id,
                 source_connection_id=payload.source_connection_id,
                 source_type=payload.source_type,
@@ -41,6 +41,7 @@ def chat(
             top_k=payload.top_k,
             candidate_k=payload.candidate_k,
             rerank=True,
+            acl=principal.acl,
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc

@@ -37,7 +37,7 @@ class DenseRetriever:
         results = self.indexer.search(
             vector=query_vector.vector,
             query_filter=qdrant_filter(request.filters, request.acl),
-            limit=request.candidate_k,
+            limit=request.candidate_k * 3,
         )
         scored_chunk_ids: list[UUID] = []
         score_by_chunk_id: dict[UUID, float] = {}

@@ -41,6 +41,8 @@ class GoogleDriveConnector:
                     "q": query,
                     "fields": "nextPageToken,files(id,name,mimeType,webViewLink,modifiedTime)",
                     "pageSize": int(self.config.get("page_size", 100)),
+                    "supportsAllDrives": True,
+                    "includeItemsFromAllDrives": True,
                 }
                 if page_token:
                     params["pageToken"] = page_token
@@ -102,8 +104,39 @@ class GoogleDriveConnector:
         )
 
     async def get_permissions(self, source_id: str) -> ConnectorPermission:
-        del source_id
-        return permissions_from_config(self.config)
+        timeout = float(self.config.get("timeout_seconds", 30))
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            response = await client.get(
+                f"{self.api_base}/files/{source_id}/permissions",
+                params={
+                    "fields": "permissions(type,emailAddress,domain,role,deleted)",
+                    "supportsAllDrives": True,
+                },
+                headers=self._headers(),
+            )
+            response.raise_for_status()
+        upstream = response.json().get("permissions", [])
+        users: set[str] = set()
+        groups: set[str] = set()
+        for item in upstream:
+            if item.get("deleted") or item.get("role") == "owner":
+                continue
+            permission_type = item.get("type")
+            email = item.get("emailAddress")
+            domain = item.get("domain")
+            if permission_type == "user" and email:
+                users.add(str(email).lower())
+            elif permission_type == "group" and email:
+                groups.add(str(email).lower())
+            elif permission_type == "domain" and domain:
+                groups.add(f"domain:{str(domain).lower()}")
+            elif permission_type == "anyone":
+                return ConnectorPermission()
+        fallback = permissions_from_config(self.config)
+        return ConnectorPermission(
+            allowed_users=sorted({*fallback.allowed_users, *users}),
+            allowed_groups=sorted({*fallback.allowed_groups, *groups}),
+        )
 
     async def checkpoint(self) -> dict[str, Any]:
         return self._checkpoint

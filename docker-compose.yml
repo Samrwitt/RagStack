@@ -5,6 +5,8 @@ x-backend-env: &backend-env
   APP_ENV: development
   DEBUG: "true"
   SECRET_KEY: ${SECRET_KEY:-dev-only-change-me}
+  CREDENTIAL_ENCRYPTION_KEY: ${CREDENTIAL_ENCRYPTION_KEY:-}
+  ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-480}
   API_V1_PREFIX: /api/v1
   CORS_ORIGINS: http://localhost:3001
   LOG_LEVEL: INFO

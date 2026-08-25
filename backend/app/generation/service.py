@@ -8,7 +8,7 @@ from app.core.config import Settings, get_settings
 from app.generation.citations import resolve_citations
 from app.generation.models import ChatMessage, EvidenceStatus, GroundedAnswer
 from app.generation.providers import LLMProvider, get_llm_provider
-from app.retrieval.models import RetrievalFilters, RetrievalMode, RetrievalRequest
+from app.retrieval.models import ACLContext, RetrievalFilters, RetrievalMode, RetrievalRequest
 from app.retrieval.service import RetrievalService
 
 
@@ -35,11 +35,13 @@ class GenerationService:
         top_k: int = 8,
         candidate_k: int | None = None,
         rerank: bool = True,
+        acl: ACLContext | None = None,
     ) -> GroundedAnswer:
         retrieval_query = conversation_retrieval_query(question, history)
         request = RetrievalRequest(
             query=retrieval_query,
             filters=filters,
+            acl=acl or ACLContext(),
             mode=mode,
             top_k=top_k,
             candidate_k=candidate_k or self.settings.reranker_candidate_k,

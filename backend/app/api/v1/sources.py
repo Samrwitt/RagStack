@@ -5,35 +5,38 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from app.api.v1.deps import get_current_organization, get_ingestion_service
+from app.api.v1.deps import AuthenticatedPrincipal, get_ingestion_service, require_permission
+from app.auth.rbac import Permission
 from app.core.bootstrap import DEV_WORKSPACE_ID
 from app.ingestion.errors import IngestionError, NotFoundError
 from app.ingestion.schemas import JobRead, SourceCreate, SourceRead
 from app.ingestion.service import IngestionService
 from app.models.enums import SourceStatus
-from app.models.organization import Organization
 
 router = APIRouter(prefix="/sources", tags=["sources"])
 
 
 @router.get("", response_model=list[SourceRead])
 def list_sources(
-    org: Annotated[Organization, Depends(get_current_organization)],
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_permission(Permission.READ))],
     service: Annotated[IngestionService, Depends(get_ingestion_service)],
 ) -> list[SourceRead]:
-    return [SourceRead.model_validate(item) for item in service.list_sources(org.id)]
+    return [
+        SourceRead.model_validate(item)
+        for item in service.list_sources(principal.organization.id)
+    ]
 
 
 @router.post("", response_model=SourceRead, status_code=status.HTTP_201_CREATED)
 def create_source(
     payload: SourceCreate,
-    org: Annotated[Organization, Depends(get_current_organization)],
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_permission(Permission.WRITE))],
     service: Annotated[IngestionService, Depends(get_ingestion_service)],
 ) -> SourceRead:
     workspace_id = payload.workspace_id or DEV_WORKSPACE_ID
     try:
         source = service.create_source(
-            organization_id=org.id,
+            organization_id=principal.organization.id,
             workspace_id=workspace_id,
             name=payload.name,
             source_type=payload.source_type,
@@ -47,11 +50,11 @@ def create_source(
 @router.get("/{source_id}", response_model=SourceRead)
 def get_source(
     source_id: UUID,
-    org: Annotated[Organization, Depends(get_current_organization)],
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_permission(Permission.READ))],
     service: Annotated[IngestionService, Depends(get_ingestion_service)],
 ) -> SourceRead:
     try:
-        return SourceRead.model_validate(service.get_source(org.id, source_id))
+        return SourceRead.model_validate(service.get_source(principal.organization.id, source_id))
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
@@ -59,13 +62,13 @@ def get_source(
 @router.post("/{source_id}/sync", response_model=JobRead)
 def sync_source(
     source_id: UUID,
-    org: Annotated[Organization, Depends(get_current_organization)],
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_permission(Permission.WRITE))],
     service: Annotated[IngestionService, Depends(get_ingestion_service)],
 ) -> JobRead:
     """Create and enqueue a connector sync job."""
     try:
         job = service.create_source_sync_job(
-            organization_id=org.id,
+            organization_id=principal.organization.id,
             source_connection_id=source_id,
         )
     except NotFoundError as exc:
@@ -85,11 +88,15 @@ def sync_source(
 @router.post("/{source_id}/pause", response_model=SourceRead)
 def pause_source(
     source_id: UUID,
-    org: Annotated[Organization, Depends(get_current_organization)],
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_permission(Permission.WRITE))],
     service: Annotated[IngestionService, Depends(get_ingestion_service)],
 ) -> SourceRead:
     try:
-        source = service.set_source_status(org.id, source_id, SourceStatus.PAUSED)
+        source = service.set_source_status(
+            principal.organization.id,
+            source_id,
+            SourceStatus.PAUSED,
+        )
         return SourceRead.model_validate(source)
     except IngestionError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
@@ -98,12 +105,16 @@ def pause_source(
 @router.post("/{source_id}/resume", response_model=SourceRead)
 def resume_source(
     source_id: UUID,
-    org: Annotated[Organization, Depends(get_current_organization)],
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_permission(Permission.WRITE))],
     service: Annotated[IngestionService, Depends(get_ingestion_service)],
 ) -> SourceRead:
     try:
         return SourceRead.model_validate(
-            service.set_source_status(org.id, source_id, SourceStatus.CONNECTED)
+            service.set_source_status(
+                principal.organization.id,
+                source_id,
+                SourceStatus.CONNECTED,
+            )
         )
     except IngestionError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
@@ -112,10 +123,10 @@ def resume_source(
 @router.delete("/{source_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_source(
     source_id: UUID,
-    org: Annotated[Organization, Depends(get_current_organization)],
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_permission(Permission.ADMIN))],
     service: Annotated[IngestionService, Depends(get_ingestion_service)],
 ) -> None:
     try:
-        service.delete_source(org.id, source_id)
+        service.delete_source(principal.organization.id, source_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc

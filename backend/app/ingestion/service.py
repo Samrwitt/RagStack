@@ -18,6 +18,7 @@ from app.chunking.models import BlockInput
 from app.chunking.registry import run_chunker
 from app.connectors.protocol import FetchedContent
 from app.core.config import get_settings
+from app.core.security import encrypt_json, split_sensitive_config
 from app.core.storage import ObjectStorage, get_object_storage, raw_object_key
 from app.ingestion.errors import NotFoundError, SourcePausedError, TenantMismatchError
 from app.ingestion.hashing import sha256_digest
@@ -110,13 +111,20 @@ class IngestionService:
         config: dict | None = None,
     ) -> SourceConnection:
         self.get_workspace(organization_id, workspace_id)
+        settings = get_settings()
+        public_config, secret_config = split_sensitive_config(config or {})
         source = SourceConnection(
             organization_id=organization_id,
             workspace_id=workspace_id,
             name=name,
             source_type=source_type,
             status=SourceStatus.CONNECTED.value,
-            config=config or {},
+            config=public_config,
+            credentials_encrypted=(
+                encrypt_json(secret_config, key_material=settings.credential_key_material)
+                if secret_config
+                else None
+            ),
             checkpoint={},
         )
         self.session.add(source)
@@ -658,8 +666,8 @@ class IngestionService:
         document_permissions = permissions or {
             "organization_id": str(organization_id),
             "workspace_id": str(workspace_id),
-            "allowed_users": source.config.get("allowed_users", []),
-            "allowed_groups": source.config.get("allowed_groups", []),
+            "allowed_users": [str(organization_id)],
+            "allowed_groups": [f"org:{organization_id}"],
         }
         extra_metadata = {
             "original_filename": filename,

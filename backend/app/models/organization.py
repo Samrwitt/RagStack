@@ -3,6 +3,7 @@
 from uuid import UUID
 
 from sqlalchemy import ForeignKey, String, UniqueConstraint
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -28,6 +29,7 @@ class User(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     email: Mapped[str] = mapped_column(String(320), unique=True, nullable=False)
     display_name: Mapped[str] = mapped_column(String(255), nullable=False)
     hashed_password: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    groups: Mapped[list] = mapped_column(JSONB, default=list, nullable=False)
     is_active: Mapped[bool] = mapped_column(default=True, nullable=False)
 
     memberships: Mapped[list["OrganizationMembership"]] = relationship(back_populates="user")
