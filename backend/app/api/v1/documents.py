@@ -245,7 +245,4 @@ def delete_document(
         document = service.delete_document(principal.organization.id, document_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    from app.workers.embedding import delete_document_vectors
-
-    delete_document_vectors.delay(str(document.id))
     return DocumentRead.model_validate(document)

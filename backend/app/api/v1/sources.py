@@ -9,7 +9,7 @@ from app.api.v1.deps import AuthenticatedPrincipal, get_ingestion_service, requi
 from app.auth.rbac import Permission
 from app.core.bootstrap import DEV_WORKSPACE_ID
 from app.ingestion.errors import IngestionError, NotFoundError
-from app.ingestion.schemas import JobRead, SourceCreate, SourceRead
+from app.ingestion.schemas import JobRead, SourceCreate, SourceRead, SourceUpdate
 from app.ingestion.service import IngestionService
 from app.models.enums import SourceStatus
 
@@ -57,6 +57,29 @@ def get_source(
         return SourceRead.model_validate(service.get_source(principal.organization.id, source_id))
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@router.patch("/{source_id}", response_model=SourceRead)
+def update_source(
+    source_id: UUID,
+    payload: SourceUpdate,
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_permission(Permission.WRITE))],
+    service: Annotated[IngestionService, Depends(get_ingestion_service)],
+) -> SourceRead:
+    try:
+        source = service.update_source(
+            organization_id=principal.organization.id,
+            source_id=source_id,
+            name=payload.name,
+            status=payload.status,
+            config=payload.config,
+            reset_checkpoint=payload.reset_checkpoint,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except IngestionError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return SourceRead.model_validate(source)
 
 
 @router.post("/{source_id}/sync", response_model=JobRead)

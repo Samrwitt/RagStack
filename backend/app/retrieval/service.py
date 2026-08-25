@@ -2,9 +2,17 @@
 
 from __future__ import annotations
 
+from time import perf_counter
+
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings, get_settings
+from app.observability.metrics import (
+    RETRIEVAL_LATENCY_SECONDS,
+    RETRIEVAL_ZERO_RESULTS,
+    increment,
+    observe,
+)
 from app.reranking.service import RerankingService
 from app.retrieval.bm25 import BM25Retriever
 from app.retrieval.dense import DenseRetriever
@@ -21,17 +29,26 @@ class RetrievalService:
         self.reranking = RerankingService(settings=self.settings)
 
     def search(self, request: RetrievalRequest) -> list[RetrievalHit]:
-        candidates = self._retrieve_candidates(request)
-        if request.rerank and self.settings.reranker_enabled:
-            return self.reranking.rerank(
-                query=request.query,
-                candidates=candidates,
-                top_k=request.top_k,
-            )
-        return [
-            self._with_rank(hit, rank)
-            for rank, hit in enumerate(candidates[: request.top_k], start=1)
-        ]
+        started = perf_counter()
+        labels = {"mode": request.mode.value}
+        try:
+            candidates = self._retrieve_candidates(request)
+            if request.rerank and self.settings.reranker_enabled:
+                hits = self.reranking.rerank(
+                    query=request.query,
+                    candidates=candidates,
+                    top_k=request.top_k,
+                )
+            else:
+                hits = [
+                    self._with_rank(hit, rank)
+                    for rank, hit in enumerate(candidates[: request.top_k], start=1)
+                ]
+            if not hits:
+                increment(RETRIEVAL_ZERO_RESULTS, labels=labels)
+            return hits
+        finally:
+            observe(RETRIEVAL_LATENCY_SECONDS, perf_counter() - started, labels=labels)
 
     def search_with_context(
         self,

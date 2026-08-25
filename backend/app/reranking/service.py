@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+from time import perf_counter
+
 from app.core.config import Settings, get_settings
+from app.observability.metrics import RERANK_LATENCY_SECONDS, observe
 from app.reranking.context import select_context
 from app.reranking.models import RerankCandidate
 from app.reranking.providers import RerankerProvider, get_reranker_provider
@@ -28,46 +31,54 @@ class RerankingService:
     ) -> list[RetrievalHit]:
         if not candidates:
             return []
+        started = perf_counter()
         provider = self.provider or get_reranker_provider(
             self.settings.reranker_provider,
             self.settings,
         )
-        inputs = [
-            RerankCandidate(
-                chunk_id=item.chunk_id,
-                text=item.text,
-                rank=item.rank,
-                score=item.score,
+        try:
+            inputs = [
+                RerankCandidate(
+                    chunk_id=item.chunk_id,
+                    text=item.text,
+                    rank=item.rank,
+                    score=item.score,
+                )
+                for item in candidates
+            ]
+            scores = {
+                item.chunk_id: item.score
+                for item in provider.rerank(query=query, candidates=inputs)
+            }
+            ordered = sorted(
+                candidates,
+                key=lambda item: (scores.get(item.chunk_id, 0.0), item.score),
+                reverse=True,
             )
-            for item in candidates
-        ]
-        scores = {
-            item.chunk_id: item.score
-            for item in provider.rerank(query=query, candidates=inputs)
-        }
-        ordered = sorted(
-            candidates,
-            key=lambda item: (scores.get(item.chunk_id, 0.0), item.score),
-            reverse=True,
-        )
-        return [
-            RetrievalHit(
-                chunk_id=hit.chunk_id,
-                document_id=hit.document_id,
-                version_id=hit.version_id,
-                score=scores.get(hit.chunk_id, 0.0),
-                rank=rank,
-                text=hit.text,
-                title=hit.title,
-                source_type=hit.source_type,
-                source_url=hit.source_url,
-                page=hit.page,
-                section=hit.section,
-                metadata=hit.metadata,
-                scores={**hit.scores, "reranker": scores.get(hit.chunk_id, 0.0)},
+            return [
+                RetrievalHit(
+                    chunk_id=hit.chunk_id,
+                    document_id=hit.document_id,
+                    version_id=hit.version_id,
+                    score=scores.get(hit.chunk_id, 0.0),
+                    rank=rank,
+                    text=hit.text,
+                    title=hit.title,
+                    source_type=hit.source_type,
+                    source_url=hit.source_url,
+                    page=hit.page,
+                    section=hit.section,
+                    metadata=hit.metadata,
+                    scores={**hit.scores, "reranker": scores.get(hit.chunk_id, 0.0)},
+                )
+                for rank, hit in enumerate(ordered[:top_k], start=1)
+            ]
+        finally:
+            observe(
+                RERANK_LATENCY_SECONDS,
+                perf_counter() - started,
+                labels={"provider": self.settings.reranker_provider},
             )
-            for rank, hit in enumerate(ordered[:top_k], start=1)
-        ]
 
     def select_context(
         self,

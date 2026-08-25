@@ -6,6 +6,7 @@ and FETCHED → … → NORMALIZED → CHUNKING → CHUNKED. Embedding starts in
 
 from __future__ import annotations
 
+from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -129,6 +130,35 @@ class IngestionService:
         )
         self.session.add(source)
         self.session.flush()
+        return source
+
+    def update_source(
+        self,
+        *,
+        organization_id: UUID,
+        source_id: UUID,
+        name: str | None = None,
+        status: str | None = None,
+        config: dict | None = None,
+        reset_checkpoint: bool = False,
+    ) -> SourceConnection:
+        source = self.get_source(organization_id, source_id)
+        if name is not None:
+            source.name = name
+        if status is not None:
+            source.status = SourceStatus(status).value
+        if config is not None:
+            settings = get_settings()
+            public_config, secret_config = split_sensitive_config(config)
+            source.config = {**source.config, **public_config}
+            if secret_config:
+                source.credentials_encrypted = encrypt_json(
+                    secret_config,
+                    key_material=settings.credential_key_material,
+                )
+        if reset_checkpoint:
+            source.checkpoint = {}
+        source.updated_at = _utcnow()
         return source
 
     def set_source_status(
@@ -614,6 +644,7 @@ class IngestionService:
     def delete_document(self, organization_id: UUID, document_id: UUID) -> Document:
         document = self.get_document(organization_id, document_id)
         if document.current_state != DocumentState.DELETED.value:
+            self._delete_document_vectors(document.id)
             self._set_state(document, DocumentState.DELETED)
             document.deleted_at = _utcnow()
             source = self.session.get(SourceConnection, document.source_connection_id)
@@ -628,6 +659,12 @@ class IngestionService:
                 stats={"raw_object_key": document.raw_object_key},
             )
         return document
+
+    def _delete_document_vectors(self, document_id: UUID) -> None:
+        from app.embeddings.service import EmbeddingService
+
+        with suppress(NotFoundError):
+            EmbeddingService(self.session).delete_document_vectors(document_id)
 
     def retry_job(self, organization_id: UUID, job_id: UUID) -> IngestOutcome:
         job = self.get_job(organization_id, job_id)

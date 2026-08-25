@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime
 from html.parser import HTMLParser
 from typing import Any
 from urllib.parse import urljoin, urlparse
@@ -58,15 +59,21 @@ class WebsiteConnector:
         self,
         checkpoint: dict[str, Any] | None = None,
     ) -> AsyncIterator[DiscoveredItem]:
-        seen = set((checkpoint or {}).get("seen_urls", []))
-        queue = [url for url in self.start_urls if url not in seen]
+        checkpoint = checkpoint or {}
+        previous_pages = dict(checkpoint.get("pages", {}))
+        seen: set[str] = set()
+        queued: set[str] = set()
+        queue = [*self.start_urls, *previous_pages.keys()]
+        queued.update(queue)
         allowed_hosts = {urlparse(url).netloc for url in self.start_urls}
+        discovered_urls: set[str] = set()
         timeout = float(self.config.get("timeout_seconds", 30))
         async with httpx.AsyncClient(timeout=timeout) as client:
             for sitemap_url in self.sitemap_urls:
                 for url in await _sitemap_urls(client, sitemap_url):
-                    if url not in seen and url not in queue:
+                    if url not in queued:
                         queue.append(url)
+                        queued.add(url)
             while queue and len(self._pages) < self.max_pages:
                 url = queue.pop(0)
                 if url in seen:
@@ -74,7 +81,17 @@ class WebsiteConnector:
                 if self.request_delay_seconds > 0:
                     await asyncio.sleep(self.request_delay_seconds)
                 seen.add(url)
-                response = await client.get(url, follow_redirects=True)
+                response = await client.get(
+                    url,
+                    follow_redirects=True,
+                    headers=_conditional_headers(_page_checkpoint(previous_pages, url)),
+                )
+                if response.status_code == 304:
+                    metadata = _page_checkpoint(previous_pages, url)
+                    canonical = str(metadata.get("canonical_url") or url)
+                    discovered_urls.add(canonical)
+                    self._checkpoint = _checkpoint(previous_pages, discovered_urls)
+                    continue
                 response.raise_for_status()
                 content_type = response.headers.get("content-type", "text/html").split(";")[0]
                 body = response.content
@@ -85,18 +102,35 @@ class WebsiteConnector:
                         next_url = urljoin(str(response.url), link)
                         if self.same_domain and urlparse(next_url).netloc not in allowed_hosts:
                             continue
-                        if next_url not in seen and next_url not in queue:
+                        if next_url not in seen and next_url not in queued:
                             queue.append(next_url)
+                            queued.add(next_url)
                 canonical = parser.canonical or str(response.url)
+                discovered_urls.add(canonical)
                 title = parser.title or urlparse(canonical).path.strip("/") or canonical
                 self._pages[canonical] = (title, body, content_type)
-                self._checkpoint = {"seen_urls": sorted(seen)}
+                previous_pages[canonical] = {
+                    "canonical_url": canonical,
+                    "etag": response.headers.get("etag"),
+                    "last_modified": response.headers.get("last-modified"),
+                    "last_seen_at": datetime.now(UTC).isoformat(),
+                }
+                self._checkpoint = _checkpoint(previous_pages, discovered_urls)
                 yield DiscoveredItem(
                     source_id=canonical,
                     title=title,
                     mime_type=content_type,
                     source_url=canonical,
                     metadata=metadata_with_connector("website", {"url": canonical}),
+                )
+        if self.config.get("delete_missing_from_sitemap") and self.sitemap_urls:
+            for missing_url in sorted(set(previous_pages) - discovered_urls):
+                yield DiscoveredItem(
+                    source_id=missing_url,
+                    title=missing_url,
+                    source_url=missing_url,
+                    deleted=True,
+                    metadata=metadata_with_connector("website", {"url": missing_url}),
                 )
 
     async def fetch(self, source_id: str) -> FetchedContent:
@@ -128,3 +162,30 @@ async def _sitemap_urls(client: httpx.AsyncClient, sitemap_url: str) -> list[str
         if loc.tag.endswith("loc") and loc.text:
             urls.append(loc.text.strip())
     return urls
+
+
+def _conditional_headers(metadata: dict[str, Any]) -> dict[str, str]:
+    headers: dict[str, str] = {}
+    if metadata.get("etag"):
+        headers["If-None-Match"] = str(metadata["etag"])
+    if metadata.get("last_modified"):
+        headers["If-Modified-Since"] = str(metadata["last_modified"])
+    return headers
+
+
+def _page_checkpoint(pages: dict[str, Any], url: str) -> dict[str, Any]:
+    if url in pages and isinstance(pages[url], dict):
+        return pages[url]
+    for metadata in pages.values():
+        if isinstance(metadata, dict) and metadata.get("canonical_url") == url:
+            return metadata
+    return {}
+
+
+def _checkpoint(pages: dict[str, Any], discovered_urls: set[str]) -> dict[str, Any]:
+    return {
+        "pages": pages,
+        "seen_urls": sorted(pages),
+        "last_discovered_urls": sorted(discovered_urls),
+        "last_sync_at": datetime.now(UTC).isoformat(),
+    }

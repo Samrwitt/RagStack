@@ -18,6 +18,13 @@ class SourceCreate(BaseModel):
     config: dict[str, Any] = Field(default_factory=dict)
 
 
+class SourceUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    status: str | None = None
+    config: dict[str, Any] | None = None
+    reset_checkpoint: bool = False
+
+
 class SourceRead(ORMModel):
     id: UUID
     organization_id: UUID

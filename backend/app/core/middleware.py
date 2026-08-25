@@ -7,6 +7,7 @@ from starlette.responses import JSONResponse
 
 from app.core.config import get_settings
 from app.core.rate_limit import FixedWindowRateLimiter
+from app.observability.metrics import RATE_LIMIT_REJECTIONS, increment
 
 try:
     import structlog
@@ -60,6 +61,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         key = request.headers.get("Authorization") or client_host
         allowed, remaining = _rate_limiter.allow(str(key))
         if not allowed:
+            increment(RATE_LIMIT_REJECTIONS, labels={"path": request.url.path})
             return JSONResponse(
                 {"detail": "rate limit exceeded"},
                 status_code=429,

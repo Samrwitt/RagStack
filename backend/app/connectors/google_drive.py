@@ -30,6 +30,18 @@ class GoogleDriveConnector:
         self,
         checkpoint: dict[str, Any] | None = None,
     ) -> AsyncIterator[DiscoveredItem]:
+        checkpoint = checkpoint or {}
+        if checkpoint.get("start_page_token"):
+            async for item in self._discover_changes(checkpoint):
+                yield item
+            return
+        async for item in self._discover_full(checkpoint):
+            yield item
+
+    async def _discover_full(
+        self,
+        checkpoint: dict[str, Any],
+    ) -> AsyncIterator[DiscoveredItem]:
         page_token = (checkpoint or {}).get("page_token")
         query = "trashed = false"
         if self.folder_id:
@@ -51,6 +63,10 @@ class GoogleDriveConnector:
                     params=params,
                     headers=self._headers(),
                 )
+                if getattr(response, "status_code", None) == 410:
+                    async for item in self._discover_full({}):
+                        yield item
+                    return
                 response.raise_for_status()
                 payload = response.json()
                 for file in payload.get("files", []):
@@ -72,6 +88,63 @@ class GoogleDriveConnector:
                 }
                 if not page_token:
                     break
+            self._checkpoint["start_page_token"] = await self._start_page_token(client)
+
+    async def _discover_changes(
+        self,
+        checkpoint: dict[str, Any],
+    ) -> AsyncIterator[DiscoveredItem]:
+        page_token = str(checkpoint["start_page_token"])
+        timeout = float(self.config.get("timeout_seconds", 30))
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            while page_token:
+                response = await client.get(
+                    f"{self.api_base}/changes",
+                    params={
+                        "pageToken": page_token,
+                        "fields": (
+                            "nextPageToken,newStartPageToken,"
+                            "changes(fileId,removed,file(id,name,mimeType,webViewLink,"
+                            "modifiedTime,trashed,parents))"
+                        ),
+                        "pageSize": int(self.config.get("page_size", 100)),
+                        "includeRemoved": True,
+                        "supportsAllDrives": True,
+                        "includeItemsFromAllDrives": True,
+                    },
+                    headers=self._headers(),
+                )
+                response.raise_for_status()
+                payload = response.json()
+                for change in payload.get("changes", []):
+                    file_id = str(change.get("fileId"))
+                    file = change.get("file") or {}
+                    if change.get("removed") or file.get("trashed"):
+                        yield DiscoveredItem(
+                            source_id=file_id,
+                            title=file_id,
+                            deleted=True,
+                            metadata=metadata_with_connector("google_drive", change),
+                        )
+                        continue
+                    if self.folder_id and self.folder_id not in set(file.get("parents") or []):
+                        continue
+                    source_id = str(file["id"])
+                    self._files[source_id] = file
+                    yield DiscoveredItem(
+                        source_id=source_id,
+                        title=str(file.get("name") or source_id),
+                        mime_type=_export_mime(file["mimeType"]),
+                        source_url=file.get("webViewLink"),
+                        updated_at=_parse_datetime(file.get("modifiedTime")),
+                        metadata=metadata_with_connector("google_drive", file),
+                    )
+                page_token = payload.get("nextPageToken")
+                if payload.get("newStartPageToken"):
+                    self._checkpoint = {
+                        "start_page_token": payload["newStartPageToken"],
+                        "last_sync_at": datetime.now(UTC).isoformat(),
+                    }
 
     async def fetch(self, source_id: str) -> FetchedContent:
         file = self._files[source_id]
@@ -143,6 +216,15 @@ class GoogleDriveConnector:
 
     def _headers(self) -> dict[str, str]:
         return {"Authorization": f"Bearer {self.config['access_token']}"}
+
+    async def _start_page_token(self, client: httpx.AsyncClient) -> str:
+        response = await client.get(
+            f"{self.api_base}/changes/startPageToken",
+            params={"supportsAllDrives": True},
+            headers=self._headers(),
+        )
+        response.raise_for_status()
+        return str(response.json()["startPageToken"])
 
 
 def _export_mime(mime_type: str) -> str:

@@ -30,19 +30,26 @@ class GitHubConnector:
         self,
         checkpoint: dict[str, Any] | None = None,
     ) -> AsyncIterator[DiscoveredItem]:
-        del checkpoint
+        checkpoint = checkpoint or {}
         timeout = float(self.config.get("timeout_seconds", 30))
         async with httpx.AsyncClient(timeout=timeout) as client:
-            for path in self.include_paths:
-                async for item in self._discover_tree(client, path):
-                    yield item
+            async for item in self._discover_tree(client, checkpoint):
+                yield item
             if self.include_issues:
-                async for item in self._discover_items(client, kind="issues"):
+                async for item in self._discover_items(
+                    client,
+                    kind="issues",
+                    checkpoint=checkpoint,
+                ):
                     yield item
             if self.include_pull_requests:
-                async for item in self._discover_items(client, kind="pulls"):
+                async for item in self._discover_items(
+                    client,
+                    kind="pulls",
+                    checkpoint=checkpoint,
+                ):
                     yield item
-        self._checkpoint = {"last_sync_at": datetime.now(UTC).isoformat()}
+        self._checkpoint["last_sync_at"] = datetime.now(UTC).isoformat()
 
     async def fetch(self, source_id: str) -> FetchedContent:
         item = self._items[source_id]
@@ -73,28 +80,39 @@ class GitHubConnector:
     async def _discover_tree(
         self,
         client: httpx.AsyncClient,
-        path: str,
+        checkpoint: dict[str, Any],
     ) -> AsyncIterator[DiscoveredItem]:
-        url = f"{self.api_base}/repos/{self.owner}/{self.repo}/contents/{path}"
-        response = await client.get(url, params={"ref": self.branch}, headers=self._headers())
+        response = await client.get(
+            f"{self.api_base}/repos/{self.owner}/{self.repo}/git/trees/{self.branch}",
+            params={"recursive": "1"},
+            headers=self._headers(),
+        )
         response.raise_for_status()
         payload = response.json()
-        entries = payload if isinstance(payload, list) else [payload]
-        for entry in entries:
-            if entry.get("type") == "dir":
-                async for item in self._discover_tree(client, str(entry["path"])):
-                    yield item
+        previous = dict((checkpoint.get("files") or {}).get("shas") or {})
+        current: dict[str, str] = {}
+        truncated = bool(payload.get("truncated"))
+        for entry in payload.get("tree", []):
+            if entry.get("type") != "blob":
                 continue
-            if entry.get("type") != "file":
+            path = str(entry["path"])
+            if not self._path_included(path):
+                continue
+            sha = str(entry.get("sha") or "")
+            current[path] = sha
+            if previous.get(path) == sha:
                 continue
             source_id = f"github:file:{self.owner}/{self.repo}/{entry['path']}"
             record = {
                 "kind": "file",
-                "path": entry["path"],
-                "sha": entry.get("sha"),
-                "title": entry["name"],
-                "download_url": entry.get("download_url"),
-                "html_url": entry.get("html_url"),
+                "path": path,
+                "sha": sha,
+                "title": path.rsplit("/", 1)[-1],
+                "download_url": None,
+                "html_url": (
+                    f"https://github.com/{self.owner}/{self.repo}/blob/"
+                    f"{self.branch}/{path}"
+                ),
             }
             self._items[source_id] = record
             yield DiscoveredItem(
@@ -104,18 +122,40 @@ class GitHubConnector:
                 source_url=record.get("html_url"),
                 metadata=metadata_with_connector("github", record),
             )
+        if not truncated:
+            for path in sorted(set(previous) - set(current)):
+                yield DiscoveredItem(
+                    source_id=f"github:file:{self.owner}/{self.repo}/{path}",
+                    title=path.rsplit("/", 1)[-1] or path,
+                    deleted=True,
+                    metadata=metadata_with_connector(
+                        "github",
+                        {"kind": "file", "path": path, "deleted": True},
+                    ),
+                )
+        self._checkpoint["files"] = {
+            "tree_sha": payload.get("sha"),
+            "truncated": truncated,
+            "shas": previous if truncated else current,
+        }
 
     async def _discover_items(
         self,
         client: httpx.AsyncClient,
         *,
         kind: str,
+        checkpoint: dict[str, Any],
     ) -> AsyncIterator[DiscoveredItem]:
         page = 1
+        cursor_key = f"{kind}_updated_at"
+        latest = checkpoint.get(cursor_key)
         while True:
+            params: dict[str, Any] = {"state": "all", "per_page": 100, "page": page}
+            if checkpoint.get(cursor_key):
+                params["since"] = checkpoint[cursor_key]
             response = await client.get(
                 f"{self.api_base}/repos/{self.owner}/{self.repo}/{kind}",
-                params={"state": "all", "per_page": 100, "page": page},
+                params=params,
                 headers=self._headers(),
             )
             response.raise_for_status()
@@ -133,6 +173,10 @@ class GitHubConnector:
                     "html_url": row.get("html_url"),
                     "updated_at": row.get("updated_at"),
                 }
+                if record.get("updated_at") and (
+                    latest is None or str(record["updated_at"]) > str(latest)
+                ):
+                    latest = record["updated_at"]
                 self._items[source_id] = record
                 yield DiscoveredItem(
                     source_id=source_id,
@@ -143,6 +187,18 @@ class GitHubConnector:
                     metadata=metadata_with_connector("github", record),
                 )
             page += 1
+        if latest:
+            self._checkpoint[cursor_key] = latest
+
+    def _path_included(self, path: str) -> bool:
+        if not self.include_paths or "" in self.include_paths:
+            return True
+        normalized = path.strip("/")
+        for include_path in self.include_paths:
+            prefix = include_path.strip("/")
+            if normalized == prefix or normalized.startswith(f"{prefix}/"):
+                return True
+        return False
 
     async def _fetch_file(self, item: dict[str, Any]) -> bytes:
         timeout = float(self.config.get("timeout_seconds", 30))
