@@ -6,7 +6,7 @@ x-backend-env: &backend-env
   DEBUG: "true"
   SECRET_KEY: ${SECRET_KEY:-dev-only-change-me}
   API_V1_PREFIX: /api/v1
-  CORS_ORIGINS: http://localhost:3000
+  CORS_ORIGINS: http://localhost:3001
   LOG_LEVEL: INFO
   LOG_FORMAT: json
   POSTGRES_HOST: postgres
@@ -176,6 +176,22 @@ services:
       timeout: 5s
       retries: 8
       start_period: 15s
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    environment:
+      INTERNAL_API_URL: http://api:8000
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+      PORT: "3001"
+      HOSTNAME: 0.0.0.0
+    ports:
+      - "${FRONTEND_PORT:-3001}:3001"
+    depends_on:
+      api:
+        condition: service_healthy
     restart: unless-stopped
 
   worker:

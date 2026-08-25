@@ -9,7 +9,7 @@ down:
 	$(COMPOSE) down
 
 logs:
-	$(COMPOSE) logs -f api worker migrate
+	$(COMPOSE) logs -f frontend api worker migrate
 
 ps:
 	$(COMPOSE) ps
