@@ -103,6 +103,7 @@ curl -s http://localhost:8000/api/v1/health/ready
 
 | Service | URL |
 | --- | --- |
+| Frontend dashboard | http://localhost:3001 |
 | API | http://localhost:8000 |
 | OpenAPI | http://localhost:8000/docs |
 | MinIO console | http://localhost:9001 (`minioadmin` / `minioadmin`) |
@@ -120,6 +121,12 @@ make test-unit   # pytest tests/unit
 make lint        # ruff
 make typecheck   # mypy
 make down
+```
+
+If you want a different host port for the frontend, set `FRONTEND_PORT`:
+
+```bash
+FRONTEND_PORT=3002 docker compose up --build
 ```
 
 Backend tests without Docker:
