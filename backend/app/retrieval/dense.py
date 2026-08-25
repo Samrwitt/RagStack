@@ -7,6 +7,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.config import Settings
 from app.embeddings.models import EmbeddingInput
 from app.embeddings.providers import EmbeddingProvider, get_embedding_provider
 from app.indexing.qdrant import QdrantIndexer
@@ -25,10 +26,11 @@ class DenseRetriever:
         *,
         provider: EmbeddingProvider | None = None,
         indexer: QdrantIndexer | None = None,
+        settings: Settings | None = None,
     ) -> None:
         self.session = session
-        self.provider = provider or get_embedding_provider()
-        self.indexer = indexer or QdrantIndexer()
+        self.provider = provider or get_embedding_provider(settings)
+        self.indexer = indexer or QdrantIndexer(settings=settings)
 
     def search(self, request: RetrievalRequest) -> list[RetrievalHit]:
         query_vector = self.provider.embed([EmbeddingInput(id="query", text=request.query)])[0]

@@ -6,8 +6,8 @@ Status: **designed**. Indexing lands in Phase 6; search, hybrid fusion, and ACL 
 
 | Mode | Use |
 | --- | --- |
-| `DENSE` | Semantic similarity via Qdrant |
-| `SPARSE` | BM25 / lexical match for error codes, identifiers, filenames |
+| `DENSE` | Semantic similarity via Qdrant using the configured embedding provider |
+| `SPARSE` | PostgreSQL full-text search over a persisted `tsvector` GIN index |
 | `HYBRID` | Both, fused with Reciprocal Rank Fusion |
 
 Hybrid is the default for production queries. Dense-only is retained for evaluation baselines.
@@ -18,14 +18,31 @@ Hybrid is the default for production queries. Dense-only is retained for evaluat
 user question
   → conversation-aware retrieval query (distinct from chat history)
   → optional rewrite / acronym expansion / multi-query
-  → dense + sparse search with metadata + ACL filters
+  → dense + indexed sparse search with metadata + ACL filters
   → RRF
   → rerank (top 50 → top 8)
   → context builder (token budget, provenance)
   → grounded generation + citations
 ```
 
-The retrieval debugger (Phase 12) exposes every stage: original query, rewritten query, dense hits, BM25 hits, RRF order, reranker scores, final context.
+The retrieval debugger (Phase 12) exposes every stage: original query, rewritten query, dense hits, sparse hits, RRF order, reranker scores, final context.
+
+## Providers
+
+Production defaults are OpenAI-compatible embeddings and chat generation plus
+Cohere reranking:
+
+| Setting | Default |
+| --- | --- |
+| `EMBEDDING_PROVIDER` | `openai` |
+| `EMBEDDING_MODEL` | `text-embedding-3-small` |
+| `LLM_PROVIDER` | `openai` |
+| `LLM_MODEL` | `gpt-4o-mini` |
+| `RERANKER_PROVIDER` | `cohere` |
+| `RERANKER_MODEL` | `rerank-v3.5` |
+
+The deterministic embedding provider, lexical-overlap reranker, and extractive
+LLM provider remain available for tests and offline fallback configuration.
 
 ## Authorization
 

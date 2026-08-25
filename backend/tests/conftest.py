@@ -5,6 +5,7 @@ import os
 import pytest
 
 os.environ.setdefault("APP_ENV", "test")
+os.environ["DEBUG"] = "false"
 os.environ.setdefault("SECRET_KEY", "test-secret-key")
 os.environ.setdefault("POSTGRES_HOST", "localhost")
 os.environ.setdefault("POSTGRES_PORT", "5433")

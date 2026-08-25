@@ -5,12 +5,13 @@ from datetime import UTC, datetime
 from types import SimpleNamespace
 from uuid import uuid4
 
+import httpx
 import pytest
 
 from app.core.config import Settings
 from app.embeddings.batching import BatchEmbedder, batched
 from app.embeddings.models import EmbeddingInput, EmbeddingProviderInfo, EmbeddingVector
-from app.embeddings.providers import DeterministicEmbeddingProvider
+from app.embeddings.providers import DeterministicEmbeddingProvider, OpenAIEmbeddingProvider
 from app.embeddings.service import EmbeddingService, chunk_payload, stable_point_id
 from app.indexing.qdrant import QdrantIndexer, VectorDimensionMismatch
 from app.models.chunk import DocumentChunk
@@ -27,6 +28,47 @@ def test_deterministic_provider_returns_stable_normalized_vectors() -> None:
     assert first.vector == second.vector
     assert len(first.vector) == 8
     assert sum(value * value for value in first.vector) == pytest.approx(1.0)
+
+
+def test_openai_embedding_provider_maps_vectors(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured = {}
+
+    def fake_post(url, *, headers, json, timeout):  # noqa: ANN001
+        captured.update(url=url, headers=headers, json=json, timeout=timeout)
+        return httpx.Response(
+            200,
+            json={
+                "data": [
+                    {"index": 1, "embedding": [0.0, 1.0]},
+                    {"index": 0, "embedding": [1.0, 0.0]},
+                ]
+            },
+            request=httpx.Request("POST", url),
+        )
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+    provider = OpenAIEmbeddingProvider(
+        Settings(
+            openai_api_key="key",
+            embedding_provider="openai",
+            embedding_model="text-embedding-3-small",
+            embedding_dimension=2,
+        )
+    )
+
+    vectors = provider.embed(
+        [
+            EmbeddingInput(id="first", text="alpha"),
+            EmbeddingInput(id="second", text="beta"),
+        ]
+    )
+
+    assert captured["url"] == "https://api.openai.com/v1/embeddings"
+    assert captured["json"]["input"] == ["alpha", "beta"]
+    assert vectors == [
+        EmbeddingVector(id="first", vector=[1.0, 0.0]),
+        EmbeddingVector(id="second", vector=[0.0, 1.0]),
+    ]
 
 
 def test_batched_splits_inputs() -> None:

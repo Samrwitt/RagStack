@@ -93,6 +93,16 @@ docker compose up --build
 
 Postgres and Redis are published on **5433** and **6380** so they do not collide with other local databases. Inside the Compose network they still use 5432 and 6379.
 
+RAG runtime defaults use real hosted providers:
+
+```bash
+OPENAI_API_KEY=... COHERE_API_KEY=... docker compose up --build
+```
+
+`OPENAI_API_KEY` powers semantic embeddings and answer generation. `COHERE_API_KEY`
+powers reranking. Tests pin deterministic embeddings, lexical reranking, and
+extractive generation so they do not call external APIs.
+
 Wait until `api` is healthy, then:
 
 ```bash

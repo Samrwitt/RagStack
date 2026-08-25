@@ -17,10 +17,7 @@ class RerankingService:
         settings: Settings | None = None,
     ) -> None:
         self.settings = settings or get_settings()
-        self.provider = provider or get_reranker_provider(
-            self.settings.reranker_provider,
-            self.settings,
-        )
+        self.provider = provider
 
     def rerank(
         self,
@@ -31,6 +28,10 @@ class RerankingService:
     ) -> list[RetrievalHit]:
         if not candidates:
             return []
+        provider = self.provider or get_reranker_provider(
+            self.settings.reranker_provider,
+            self.settings,
+        )
         inputs = [
             RerankCandidate(
                 chunk_id=item.chunk_id,
@@ -42,7 +43,7 @@ class RerankingService:
         ]
         scores = {
             item.chunk_id: item.score
-            for item in self.provider.rerank(query=query, candidates=inputs)
+            for item in provider.rerank(query=query, candidates=inputs)
         }
         ordered = sorted(
             candidates,

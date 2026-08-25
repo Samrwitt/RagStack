@@ -17,12 +17,12 @@ class RetrievalService:
         self.session = session
         self.settings = settings or get_settings()
         self.bm25 = BM25Retriever(session)
-        self.dense = DenseRetriever(session)
+        self.dense = DenseRetriever(session, settings=self.settings)
         self.reranking = RerankingService(settings=self.settings)
 
     def search(self, request: RetrievalRequest) -> list[RetrievalHit]:
         candidates = self._retrieve_candidates(request)
-        if request.rerank:
+        if request.rerank and self.settings.reranker_enabled:
             return self.reranking.rerank(
                 query=request.query,
                 candidates=candidates,

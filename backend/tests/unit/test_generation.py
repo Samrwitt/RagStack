@@ -1,8 +1,16 @@
 from uuid import uuid4
 
+import httpx
+import pytest
+
+from app.core.config import Settings
 from app.generation.citations import resolve_citations
 from app.generation.models import ChatMessage, EvidenceStatus
-from app.generation.providers import INSUFFICIENT_MESSAGE, ExtractiveLLMProvider
+from app.generation.providers import (
+    INSUFFICIENT_MESSAGE,
+    ExtractiveLLMProvider,
+    OpenAIChatLLMProvider,
+)
 from app.generation.service import conversation_retrieval_query
 from app.retrieval.models import RetrievalHit
 
@@ -43,6 +51,29 @@ def test_extractive_provider_answers_with_inline_citation_markers() -> None:
     assert answer.evidence_status == EvidenceStatus.GROUNDED
     assert answer.answer == "Employees receive 22 annual leave days. [1]"
     assert answer.context == [hit]
+
+
+def test_openai_chat_provider_sends_grounded_prompt(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured = {}
+
+    def fake_post(url, *, headers, json, timeout):  # noqa: ANN001
+        captured.update(url=url, headers=headers, json=json, timeout=timeout)
+        return httpx.Response(
+            200,
+            json={"choices": [{"message": {"content": "Employees receive 22 days. [1]"}}]},
+            request=httpx.Request("POST", url),
+        )
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+    hit = _hit("Employees receive 22 annual leave days.")
+    provider = OpenAIChatLLMProvider(Settings(openai_api_key="key", llm_provider="openai"))
+
+    answer = provider.answer(question="How many leave days?", context=[hit])
+
+    assert captured["url"] == "https://api.openai.com/v1/chat/completions"
+    assert captured["json"]["messages"][1]["content"].count("[1]") >= 1
+    assert answer.evidence_status == EvidenceStatus.GROUNDED
+    assert answer.answer == "Employees receive 22 days. [1]"
 
 
 def test_resolve_citations_deduplicates_hits() -> None:
