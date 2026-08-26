@@ -40,6 +40,8 @@ class RetrievalRequest:
     candidate_k: int = 50
     rerank: bool = False
     context_token_budget: int | None = None
+    use_hyde: bool = False
+    expand_query: bool = False
 
 
 @dataclass(frozen=True, slots=True)

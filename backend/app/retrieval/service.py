@@ -18,6 +18,7 @@ from app.reranking.service import RerankingService
 from app.retrieval.bm25 import BM25Retriever
 from app.retrieval.dense import DenseRetriever
 from app.retrieval.models import RetrievalHit, RetrievalMode, RetrievalRequest, SelectedContext
+from app.retrieval.query_transform import QueryTransformer
 from app.retrieval.rrf import reciprocal_rank_fusion
 
 
@@ -28,6 +29,7 @@ class RetrievalService:
         self.bm25 = BM25Retriever(session)
         self.dense = DenseRetriever(session, settings=self.settings)
         self.reranking = RerankingService(settings=self.settings)
+        self.transformer = QueryTransformer(settings=self.settings)
 
     def search(self, request: RetrievalRequest) -> list[RetrievalHit]:
         started = perf_counter()
@@ -127,32 +129,45 @@ class RetrievalService:
 
     def _retrieve_candidates(self, request: RetrievalRequest) -> list[RetrievalHit]:
         candidate_k = request.candidate_k if request.rerank else request.top_k
-        if request.mode == RetrievalMode.DENSE:
-            return self.dense.search(
-                self._candidate_request(request, RetrievalMode.DENSE, candidate_k)
-            )
-        if request.mode == RetrievalMode.SPARSE:
-            return self.bm25.search(
-                self._candidate_request(request, RetrievalMode.SPARSE, candidate_k)
-            )
-        if request.mode == RetrievalMode.HYBRID:
-            sparse = self.bm25.search(
-                self._candidate_request(request, RetrievalMode.SPARSE, candidate_k)
-            )
-            dense = self.dense.search(
-                self._candidate_request(request, RetrievalMode.DENSE, candidate_k)
-            )
-            return reciprocal_rank_fusion([dense, sparse], top_k=candidate_k)
-        raise ValueError(f"unsupported retrieval mode: {request.mode}")
+        query_text = request.query
+        
+        # Apply HyDE if requested for dense retrieval
+        if request.use_hyde:
+            query_text = self.transformer.generate_hyde_doc(request.query)
+
+        queries = [query_text]
+        if request.expand_query:
+            queries = self.transformer.expand_query(query_text)
+
+        all_runs: list[list[RetrievalHit]] = []
+        for q in queries:
+            req = self._candidate_request(request, request.mode, candidate_k, query_override=q)
+            if request.mode == RetrievalMode.DENSE:
+                all_runs.append(self.dense.search(req))
+            elif request.mode == RetrievalMode.SPARSE:
+                all_runs.append(self.bm25.search(req))
+            elif request.mode == RetrievalMode.HYBRID:
+                sparse_req = self._candidate_request(request, RetrievalMode.SPARSE, candidate_k, query_override=q)
+                dense_req = self._candidate_request(request, RetrievalMode.DENSE, candidate_k, query_override=q)
+                sparse = self.bm25.search(sparse_req)
+                dense = self.dense.search(dense_req)
+                all_runs.append(reciprocal_rank_fusion([dense, sparse], top_k=candidate_k))
+            else:
+                raise ValueError(f"unsupported retrieval mode: {request.mode}")
+
+        if len(all_runs) == 1:
+            return all_runs[0]
+        return reciprocal_rank_fusion(all_runs, top_k=candidate_k)
 
     def _candidate_request(
         self,
         request: RetrievalRequest,
         mode: RetrievalMode,
         candidate_k: int,
+        query_override: str | None = None,
     ) -> RetrievalRequest:
         return RetrievalRequest(
-            query=request.query,
+            query=query_override or request.query,
             filters=request.filters,
             acl=request.acl,
             mode=mode,
@@ -160,6 +175,8 @@ class RetrievalService:
             candidate_k=candidate_k,
             rerank=False,
             context_token_budget=request.context_token_budget,
+            use_hyde=False,
+            expand_query=False,
         )
 
     def _with_rank(self, hit: RetrievalHit, rank: int) -> RetrievalHit:

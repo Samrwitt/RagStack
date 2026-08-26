@@ -166,3 +166,17 @@ export async function getDashboardData(): Promise<DashboardData> {
     };
   }
 }
+
+export async function searchDebug(payload: {
+  query: string;
+  mode?: "hybrid" | "dense" | "sparse";
+  top_k?: number;
+  rerank?: boolean;
+  use_hyde?: boolean;
+  expand_query?: boolean;
+}): Promise<SearchDebugResponse> {
+  return apiFetch<SearchDebugResponse>("/api/v1/search/debug", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}

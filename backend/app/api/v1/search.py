@@ -37,6 +37,8 @@ def search(
         acl=principal.acl,
         rerank=payload.rerank,
         context_token_budget=payload.context_token_budget,
+        use_hyde=payload.use_hyde,
+        expand_query=payload.expand_query,
     )
     try:
         hits, context = RetrievalService(session).search_with_context(request)
@@ -77,6 +79,8 @@ def search_debug(
         acl=principal.acl,
         rerank=payload.rerank,
         context_token_budget=payload.context_token_budget,
+        use_hyde=payload.use_hyde,
+        expand_query=payload.expand_query,
     )
     try:
         debug_res = RetrievalService(session).search_debug(request)

@@ -18,6 +18,8 @@ class SearchRequest(BaseModel):
     language: str | None = None
     rerank: bool = False
     context_token_budget: int | None = Field(default=None, ge=1, le=32000)
+    use_hyde: bool = False
+    expand_query: bool = False
 
 
 class SearchHitRead(BaseModel):
