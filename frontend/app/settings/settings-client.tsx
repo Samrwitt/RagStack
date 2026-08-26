@@ -15,6 +15,7 @@ export function SettingsClient() {
 
   // Editable fields
   const [rerankerEnabled, setRerankerEnabled] = useState(true);
+  const [llmProvider, setLlmProvider] = useState("gemini");
   const [rerankerCandidateK, setRerankerCandidateK] = useState(50);
   const [contextTokenBudget, setContextTokenBudget] = useState(4000);
   const [minGroundingScore, setMinGroundingScore] = useState(0.1);
@@ -30,6 +31,7 @@ export function SettingsClient() {
       const data = (await response.json()) as SettingsConfig;
       setConfig(data);
       setRerankerEnabled(data.reranker_enabled);
+      setLlmProvider(data.llm_provider ?? "gemini");
       setRerankerCandidateK(data.reranker_candidate_k);
       setContextTokenBudget(data.context_token_budget);
       setMinGroundingScore(data.min_grounding_score);
@@ -58,6 +60,7 @@ export function SettingsClient() {
         },
         body: JSON.stringify({
           reranker_enabled: rerankerEnabled,
+          llm_provider: llmProvider,
           reranker_candidate_k: rerankerCandidateK,
           context_token_budget: contextTokenBudget,
           min_grounding_score: minGroundingScore
@@ -100,8 +103,25 @@ export function SettingsClient() {
 
       <div className="settingsGroup">
         <h3>
-          <SettingsIcon size={16} /> Retrieval & Reranking Settings
+          <SettingsIcon size={16} /> Retrieval & Generation Settings
         </h3>
+
+        <div className="settingItem">
+          <label htmlFor="llmProviderSelect">
+            <strong>LLM Generation Provider</strong>
+          </label>
+          <select
+            id="llmProviderSelect"
+            value={llmProvider}
+            onChange={(e) => setLlmProvider(e.target.value)}
+            style={{ width: "100%", padding: "8px", marginTop: "4px", borderRadius: "6px", border: "1px solid var(--border-color, #ccc)", backgroundColor: "var(--bg-input, #fff)", color: "inherit" }}
+          >
+            <option value="gemini">Google Gemini (Recommended)</option>
+            <option value="openai">OpenAI Chat</option>
+            <option value="extractive">Extractive Fallback (Offline)</option>
+          </select>
+          <p className="settingDesc">Select the LLM provider used for grounded answer generation with citations.</p>
+        </div>
 
         <div className="settingItem">
           <label className="checkboxLabel">

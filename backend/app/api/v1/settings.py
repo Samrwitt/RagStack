@@ -23,6 +23,7 @@ class SettingsRead(BaseModel):
 
 class SettingsUpdate(BaseModel):
     reranker_enabled: bool | None = None
+    llm_provider: str | None = None
     reranker_candidate_k: int | None = Field(default=None, ge=1, le=200)
     context_token_budget: int | None = Field(default=None, ge=1, le=32000)
     min_grounding_score: float | None = Field(default=None, ge=0.0, le=1.0)
@@ -51,6 +52,8 @@ def update_runtime_settings(
     settings = get_settings()
     if payload.reranker_enabled is not None:
         settings.reranker_enabled = payload.reranker_enabled
+    if payload.llm_provider is not None:
+        settings.llm_provider = payload.llm_provider
     if payload.reranker_candidate_k is not None:
         settings.reranker_candidate_k = payload.reranker_candidate_k
     if payload.context_token_budget is not None:

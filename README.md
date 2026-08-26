@@ -2,7 +2,7 @@
 
 CorpusForge is a production-oriented multi-source RAG platform for ingesting, synchronizing, indexing, retrieving, and evaluating organizational knowledge across heterogeneous data sources.
 
-This is not a "upload a PDF and chat" demo. It is an **Enterprise Knowledge & Operations Assistant**: a control plane and processing pipeline that an organization could adopt to connect Google Drive, GitHub, websites, PostgreSQL, REST APIs, and internal documents — then answer questions with **verifiable citations** and **permission-aware retrieval**.
+This is not a "upload a PDF and chat" demo. It is an **Enterprise Knowledge & Operations Assistant**: a control plane and processing pipeline that an organization could adopt to connect Google Drive, GitHub, arXiv papers, websites, PostgreSQL, REST APIs, and internal documents — then answer questions with **verifiable citations** and **permission-aware retrieval**.
 
 ## What this repository demonstrates
 
@@ -35,6 +35,7 @@ flowchart LR
         Upload[File upload]
         Web[Website crawler]
         GH[GitHub]
+        ArXiv[arXiv Papers]
         PG[(PostgreSQL)]
         API[REST APIs]
     end
@@ -74,11 +75,11 @@ See [docs/architecture.md](docs/architecture.md) for package layout, tenancy, an
 | 3 | Parsing: TXT, Markdown, HTML, DOCX, PDF structured blocks, parser versioning, OCR fallback | **Complete** |
 | 4 | Normalization & dedup: Unicode/whitespace, boilerplate, language, exact + near duplicates | **Complete** |
 | 5 | Chunking: fixed, recursive, heading-aware, parent-child strategies | **Complete** |
-| 6 | Embeddings & vector index: provider abstraction, batching, retries, Qdrant collections, metadata, re-embedding | In progress |
+| 6 | Embeddings & vector index: provider abstraction, batching, retries, Qdrant collections, metadata, re-embedding | **Complete** |
 | 7 | Search: dense retrieval, BM25, hybrid + RRF, metadata filters, ACL filtering | **Complete** |
 | 8 | Reranking: provider abstraction, candidate sizing, score tracking, context selection | **Complete** |
 | 9 | RAG generation: LLM abstraction, grounded answers, citations, insufficient-evidence handling, conversation-aware retrieval | **Complete** |
-| 10 | Connectors: website crawler, GitHub, PostgreSQL, REST API, Google Drive | **Complete** |
+| 10 | Connectors: website crawler, GitHub, arXiv papers, PostgreSQL, REST API, Google Drive | **Complete** |
 | 11 | Evaluation: datasets, Recall@K / MRR / nDCG, groundedness, citation eval, experiment comparison | **Complete** |
 | 12 | Frontend: Next.js dashboard for overview, sources, documents, chat, retrieval debugger, evaluation, jobs, settings | **Complete** |
 | 13 | Production hardening: DLQ, richer retries, queue monitoring, metrics, RBAC, ACL enforcement, rate limiting, security tests | **Complete** |
@@ -96,12 +97,10 @@ Postgres and Redis are published on **5433** and **6380** so they do not collide
 RAG runtime defaults use real hosted providers:
 
 ```bash
-OPENAI_API_KEY=... COHERE_API_KEY=... docker compose up --build
+GEMINI_API_KEY=... OPENAI_API_KEY=... COHERE_API_KEY=... docker compose up --build
 ```
 
-`OPENAI_API_KEY` powers semantic embeddings and answer generation. `COHERE_API_KEY`
-powers reranking. Tests pin deterministic embeddings, lexical reranking, and
-extractive generation so they do not call external APIs.
+`GEMINI_API_KEY` powers Google Gemini semantic embeddings (`gemini-embedding-001`) and grounded answer generation (`gemini-2.5-flash` / `gemini-3.6-flash`). `OPENAI_API_KEY` powers OpenAI embeddings and answer generation. `COHERE_API_KEY` powers reranking. Tests pin deterministic embeddings, lexical reranking, and extractive generation so they do not call external APIs.
 
 Wait until `api` is healthy, then:
 

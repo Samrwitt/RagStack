@@ -30,6 +30,7 @@ from app.models.block import DocumentBlock
 from app.models.chunk import DocumentChunk
 from app.models.document import Document, DocumentVersion
 from app.models.duplicate import DocumentDuplicate
+from app.models.embedding import ChunkEmbedding
 from app.models.enums import (
     DocumentState,
     FailureKind,
@@ -1048,6 +1049,9 @@ class IngestionService:
             chunk_size=settings.chunk_size,
             overlap=settings.chunk_overlap,
             parent_max_tokens=settings.parent_chunk_max_tokens,
+        )
+        self.session.execute(
+            delete(ChunkEmbedding).where(ChunkEmbedding.version_id == version.id)
         )
         self.session.execute(
             delete(DocumentChunk).where(DocumentChunk.version_id == version.id)

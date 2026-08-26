@@ -1,5 +1,6 @@
 import { getDashboardData } from "../api";
-import { AppShell, Metrics, SourcesPanel } from "../components";
+import { AppShell, Metrics } from "../components";
+import { SourcesClient } from "./sources-client";
 
 export default async function SourcesPage() {
   const { health, sources, documents, jobs, error } = await getDashboardData();
@@ -8,11 +9,11 @@ export default async function SourcesPage() {
     <AppShell
       active="/sources"
       title="Sources"
-      subtitle={error ? `API unavailable: ${error}` : "Source connections and sync status"}
+      subtitle={error ? `API unavailable: ${error}` : "Import and manage research papers & code repositories"}
     >
       <Metrics health={health} sources={sources} documents={documents} jobs={jobs} />
       <section className="grid">
-        <SourcesPanel sources={sources} wide />
+        <SourcesClient initialSources={sources} />
       </section>
     </AppShell>
   );

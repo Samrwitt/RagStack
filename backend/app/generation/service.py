@@ -32,7 +32,13 @@ class GenerationService:
     ) -> None:
         self.session = session
         self.settings = settings or get_settings()
-        self.provider = provider or get_llm_provider(self.settings.llm_provider, self.settings)
+        provider_name = self.settings.llm_provider
+        if provider_name == "extractive" or not provider_name:
+            if self.settings.gemini_api_key:
+                provider_name = "gemini"
+            elif self.settings.openai_api_key:
+                provider_name = "openai"
+        self.provider = provider or get_llm_provider(provider_name, self.settings)
         self.retrieval = RetrievalService(session, settings=self.settings)
 
     def answer(

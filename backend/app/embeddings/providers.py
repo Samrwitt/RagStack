@@ -104,10 +104,72 @@ class OpenAIEmbeddingProvider:
         return vectors
 
 
+class GeminiEmbeddingProvider:
+    """Embedding provider backed by Google Gemini gemini-embedding-001."""
+
+    def __init__(self, settings: Settings | None = None) -> None:
+        cfg = settings or get_settings()
+        api_key = cfg.gemini_api_key or cfg.openai_api_key
+        if not api_key:
+            raise ValueError("GEMINI_API_KEY is required when EMBEDDING_PROVIDER=gemini")
+        self.settings = cfg
+        self.api_key = api_key
+        model_name = cfg.embedding_model if cfg.embedding_model and cfg.embedding_model != "text-embedding-3-small" else "gemini-embedding-001"
+        self.info = EmbeddingProviderInfo(
+            provider="gemini",
+            model=model_name,
+            dimensions=3072,
+            max_batch_size=8,
+            embedding_version=cfg.embedding_version,
+        )
+
+    def embed(self, inputs: list[EmbeddingInput]) -> list[EmbeddingVector]:
+        if not inputs:
+            return []
+        model = self.info.model
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:batchEmbedContents"
+        
+        requests_payload = [
+            {
+                "model": f"models/{model}",
+                "content": {"parts": [{"text": item.text}]},
+            }
+            for item in inputs
+        ]
+        
+        response = httpx.post(
+            url,
+            params={"key": self.api_key},
+            headers={"Content-Type": "application/json"},
+            json={"requests": requests_payload},
+            timeout=self.settings.openai_timeout_seconds,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        embeddings_data = payload.get("embeddings", [])
+        if len(embeddings_data) != len(inputs):
+            raise ValueError("Gemini embedding provider returned different number of vectors")
+        
+        vectors = []
+        for item, data in zip(inputs, embeddings_data, strict=True):
+            vec = [float(v) for v in data.get("values", [])]
+            vectors.append(EmbeddingVector(id=item.id, vector=vec))
+        return vectors
+
+
 def get_embedding_provider(settings: Settings | None = None) -> EmbeddingProvider:
     cfg = settings or get_settings()
-    if cfg.embedding_provider == "openai":
+    provider = cfg.embedding_provider
+    if (provider == "deterministic" or not provider) and (cfg.gemini_api_key or cfg.openai_api_key):
+        if cfg.gemini_api_key:
+            provider = "gemini"
+        elif cfg.openai_api_key:
+            provider = "openai"
+
+    if provider == "gemini":
+        return GeminiEmbeddingProvider(cfg)
+    if provider == "openai":
         return OpenAIEmbeddingProvider(cfg)
-    if cfg.embedding_provider == "deterministic":
+    if provider == "deterministic":
         return DeterministicEmbeddingProvider(cfg)
     raise ValueError(f"unsupported embedding provider: {cfg.embedding_provider}")

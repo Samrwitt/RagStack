@@ -21,6 +21,7 @@ class SourceType(StrEnum):
     POSTGRES = "postgres"
     REST_API = "rest_api"
     GOOGLE_DRIVE = "google_drive"
+    ARXIV = "arxiv"
 
 
 class SourceStatus(StrEnum):

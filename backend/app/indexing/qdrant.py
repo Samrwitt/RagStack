@@ -160,23 +160,28 @@ class QdrantIndexer:
     ) -> list[VectorSearchResult]:
         if limit <= 0:
             return []
-        if hasattr(self.client, "search"):
-            results = self.client.search(
-                collection_name=self.collection_name,
-                query_vector=vector,
-                query_filter=query_filter,
-                limit=limit,
-                with_payload=True,
-            )
-        else:
-            response = self.client.query_points(
-                collection_name=self.collection_name,
-                query=vector,
-                query_filter=query_filter,
-                limit=limit,
-                with_payload=True,
-            )
-            results = response.points
+        if not self._collection_exists():
+            return []
+        try:
+            if hasattr(self.client, "search"):
+                results = self.client.search(
+                    collection_name=self.collection_name,
+                    query_vector=vector,
+                    query_filter=query_filter,
+                    limit=limit,
+                    with_payload=True,
+                )
+            else:
+                response = self.client.query_points(
+                    collection_name=self.collection_name,
+                    query=vector,
+                    query_filter=query_filter,
+                    limit=limit,
+                    with_payload=True,
+                )
+                results = response.points
+        except (UnexpectedResponse, ValueError, Exception):
+            return []
         return [
             VectorSearchResult(
                 id=str(item.id),
@@ -188,11 +193,14 @@ class QdrantIndexer:
 
     def _collection_exists(self) -> bool:
         if hasattr(self.client, "collection_exists"):
-            return bool(self.client.collection_exists(self.collection_name))
+            try:
+                return bool(self.client.collection_exists(self.collection_name))
+            except Exception:
+                return False
         try:
             self.client.get_collection(self.collection_name)
             return True
-        except (UnexpectedResponse, ValueError):
+        except (UnexpectedResponse, ValueError, Exception):
             return False
 
     def _collection_vector_size(self) -> int | None:

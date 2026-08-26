@@ -1,8 +1,8 @@
 "use client";
 
 import { Loader2, MessageSquare, RefreshCw, Send, Sparkles } from "lucide-react";
-import { FormEvent, useState } from "react";
-import type { ChatMessage, ChatResponse } from "./api";
+import { FormEvent, useEffect, useState } from "react";
+import type { ChatMessage, ChatResponse, DocumentItem } from "./api";
 
 const publicApiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -11,18 +11,132 @@ type ConversationItem =
   | { role: "assistant"; content: string; response: ChatResponse };
 
 const SAMPLE_QUESTIONS = [
-  "What is the annual leave policy?",
-  "How do I set up local development environment?",
-  "What are the security and compliance requirements?"
+  "Summarize the core methodology and findings of the research paper.",
+  "What are the main experimental results and metrics reported?",
+  "How does this approach compare to prior baselines in the literature?"
 ];
+
+function renderFormattedMarkdown(content: string) {
+  if (!content) return null;
+
+  const lines = content.split("\n");
+  const elements: React.ReactNode[] = [];
+  let currentList: React.ReactNode[] = [];
+
+  const flushList = () => {
+    if (currentList.length > 0) {
+      elements.push(
+        <ul key={`ul-${elements.length}`} style={{ margin: "8px 0 12px 20px", paddingLeft: "12px" }}>
+          {currentList}
+        </ul>
+      );
+      currentList = [];
+    }
+  };
+
+  const parseInline = (text: string) => {
+    const parts = text.split(/(\*\*.*?\*\*|\$.*?\$)/g);
+    return parts.map((part, i) => {
+      if (part.startsWith("**") && part.endsWith("**")) {
+        return <strong key={i} style={{ fontWeight: 600 }}>{part.slice(2, -2)}</strong>;
+      }
+      if (part.startsWith("$") && part.endsWith("$")) {
+        const mathContent = part.startsWith("$$") && part.endsWith("$$") ? part.slice(2, -2) : part.slice(1, -1);
+        return <code key={i} style={{ background: "rgba(255,255,255,0.08)", padding: "2px 6px", borderRadius: "4px", fontFamily: "monospace", fontSize: "13px" }}>{mathContent}</code>;
+      }
+      return part;
+    });
+  };
+
+  lines.forEach((line, index) => {
+    const trimmed = line.trim();
+
+    if (trimmed === "---") {
+      flushList();
+      elements.push(<hr key={index} style={{ border: "none", borderTop: "1px solid rgba(255,255,255,0.12)", margin: "16px 0" }} />);
+      return;
+    }
+
+    if (trimmed.startsWith("### ")) {
+      flushList();
+      elements.push(
+        <h4 key={index} style={{ fontSize: "15px", fontWeight: 700, margin: "14px 0 6px 0" }}>
+          {parseInline(trimmed.slice(4))}
+        </h4>
+      );
+      return;
+    }
+
+    if (trimmed.startsWith("## ")) {
+      flushList();
+      elements.push(
+        <h3 key={index} style={{ fontSize: "16px", fontWeight: 700, margin: "16px 0 6px 0" }}>
+          {parseInline(trimmed.slice(3))}
+        </h3>
+      );
+      return;
+    }
+
+    if (trimmed.startsWith("# ")) {
+      flushList();
+      elements.push(
+        <h2 key={index} style={{ fontSize: "18px", fontWeight: 700, margin: "18px 0 8px 0" }}>
+          {parseInline(trimmed.slice(2))}
+        </h2>
+      );
+      return;
+    }
+
+    if (trimmed.startsWith("* ") || trimmed.startsWith("- ")) {
+      currentList.push(
+        <li key={`${index}-${currentList.length}`} style={{ marginBottom: "4px", lineHeight: "1.5" }}>
+          {parseInline(trimmed.slice(2))}
+        </li>
+      );
+      return;
+    }
+
+    flushList();
+
+    if (trimmed === "") {
+      elements.push(<div key={index} style={{ height: "6px" }} />);
+    } else {
+      elements.push(
+        <p key={index} style={{ margin: "4px 0 8px 0", lineHeight: "1.6" }}>
+          {parseInline(trimmed)}
+        </p>
+      );
+    }
+  });
+
+  flushList();
+  return <div>{elements}</div>;
+}
 
 export function ChatClient() {
   const [question, setQuestion] = useState("");
   const [mode, setMode] = useState<"hybrid" | "dense" | "sparse">("hybrid");
   const [topK, setTopK] = useState(8);
+  const [documents, setDocuments] = useState<DocumentItem[]>([]);
+  const [selectedDocId, setSelectedDocId] = useState<string>("");
   const [conversation, setConversation] = useState<ConversationItem[]>([]);
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function fetchDocuments() {
+      try {
+        const res = await fetch(`${publicApiUrl}/api/v1/documents`);
+        if (res.ok) {
+          const data = (await res.json()) as DocumentItem[];
+          setDocuments(data);
+        }
+      } catch {
+        // Silently handle if documents fails to load
+      }
+    }
+    fetchDocuments();
+  }, []);
 
   async function handleSubmit(event?: FormEvent<HTMLFormElement>, customQuery?: string) {
     if (event) {
@@ -57,7 +171,8 @@ export function ChatClient() {
           history,
           mode,
           top_k: topK,
-          candidate_k: 50
+          candidate_k: 50,
+          document_ids: selectedDocId ? [selectedDocId] : []
         })
       });
 
@@ -112,6 +227,21 @@ export function ChatClient() {
             <option value={8}>8 Chunks</option>
             <option value={12}>12 Chunks</option>
           </select>
+
+          <label htmlFor="docSelect">Scope:</label>
+          <select
+            id="docSelect"
+            value={selectedDocId}
+            onChange={(e) => setSelectedDocId(e.target.value)}
+            style={{ maxWidth: "260px" }}
+          >
+            <option value="">Entire RAG (All Documents)</option>
+            {documents.map((doc) => (
+              <option key={doc.id} value={doc.id}>
+                📄 {doc.title}
+              </option>
+            ))}
+          </select>
         </div>
 
         {conversation.length > 0 ? (
@@ -145,8 +275,12 @@ export function ChatClient() {
 
         {conversation.map((item, index) => (
           <article className={`message ${item.role}`} key={`${item.role}-${index}`}>
-            <span>{item.role === "user" ? "You" : "CorpusForge RAG"}</span>
-            <p>{item.content}</p>
+            <span style={{ fontWeight: 600, color: "var(--muted)", fontSize: "12px", display: "block", marginBottom: "4px" }}>
+              {item.role === "user" ? "You" : "CorpusForge RAG"}
+            </span>
+            <div style={{ lineHeight: "1.6", margin: "4px 0 12px 0", fontSize: "14px" }}>
+              {renderFormattedMarkdown(item.content)}
+            </div>
             {item.role === "assistant" ? (
               <div className="answerMeta">
                 <span className={`statusBadge ${item.response.evidence_status}`}>
@@ -159,7 +293,13 @@ export function ChatClient() {
                     <ol className="citations">
                       {item.response.citations.map((citation) => (
                         <li key={citation.chunk_id}>
-                          <span>{citation.title}</span>
+                          {citation.source_url ? (
+                            <a href={citation.source_url} target="_blank" rel="noopener noreferrer" style={{ color: "var(--accent)", textDecoration: "underline" }}>
+                              {citation.title}
+                            </a>
+                          ) : (
+                            <span>{citation.title}</span>
+                          )}
                           {citation.page ? ` (page ${citation.page})` : ""}
                           {citation.section ? ` - ${citation.section}` : ""}
                         </li>

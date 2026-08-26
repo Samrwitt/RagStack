@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from app.connectors.arxiv import ArxivConnector
 from app.connectors.github import GitHubConnector
 from app.connectors.google_drive import GoogleDriveConnector
 from app.connectors.postgres import PostgresConnector
@@ -24,6 +25,8 @@ def build_connector(source: SourceConnection) -> SourceConnector:
                 key_material=settings.credential_key_material,
             )
         )
+    if source.source_type == SourceType.ARXIV.value:
+        return ArxivConnector(config=config)
     if source.source_type == SourceType.WEBSITE.value:
         return WebsiteConnector(config=config)
     if source.source_type == SourceType.GITHUB.value:

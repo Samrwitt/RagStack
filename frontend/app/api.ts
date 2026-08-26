@@ -21,7 +21,7 @@ export type Source = {
   last_error: string | null;
 };
 
-export type Document = {
+export type DocumentItem = {
   id: string;
   title: string;
   source_type: string;
@@ -117,7 +117,7 @@ export type SettingsConfig = {
 export type DashboardData = {
   health: HealthReport | null;
   sources: Source[];
-  documents: Document[];
+  documents: DocumentItem[];
   jobs: Job[];
   error: string | null;
 };
@@ -145,7 +145,7 @@ export async function getDashboardData(): Promise<DashboardData> {
     const [health, sources, documents, jobs] = await Promise.all([
       apiFetch<HealthReport>("/api/v1/health"),
       apiFetch<Source[]>("/api/v1/sources"),
-      apiFetch<Document[]>("/api/v1/documents"),
+      apiFetch<DocumentItem[]>("/api/v1/documents"),
       apiFetch<Job[]>("/api/v1/jobs")
     ]);
 

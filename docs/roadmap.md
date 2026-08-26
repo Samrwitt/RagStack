@@ -4,7 +4,7 @@ Status through Phase 5: foundation, ingestion, parsing, normalization, deduplica
 
 ## Phase 6 - Embeddings & Vector Index
 
-Status: **in progress**. The first slice includes the provider abstraction, deterministic dev provider, batching/retries, Qdrant collection management, vector payload metadata, embedding records, and Celery task wiring.
+Status: **complete**. Includes provider abstraction (Google Gemini, OpenAI, deterministic local), batching/retries, Qdrant collection management, vector payload metadata, embedding records, and Celery task wiring.
 
 Goal: convert finalized chunks into versioned vectors and persist them in Qdrant with enough payload metadata for retrieval, filtering, deletion, and re-embedding.
 

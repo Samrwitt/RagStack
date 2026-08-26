@@ -29,7 +29,9 @@ class BatchEmbedder:
     def embed(self, inputs: list[EmbeddingInput]) -> list[EmbeddingVector]:
         limit = min(self.settings.embedding_batch_size, self.provider.info.max_batch_size)
         vectors: list[EmbeddingVector] = []
-        for batch in batched(inputs, limit):
+        for i, batch in enumerate(batched(inputs, limit)):
+            if i > 0:
+                time.sleep(1.0)
             vectors.extend(self._embed_with_retries(batch))
         return vectors
 
@@ -49,6 +51,7 @@ class BatchEmbedder:
                 last_exc = exc
                 if attempt + 1 == attempts:
                     break
-                time.sleep(self.settings.embedding_retry_base_seconds * (2**attempt))
+                sleep_time = (5.0 * (2**attempt)) if "429" in str(exc) else max(3.0, self.settings.embedding_retry_base_seconds * (2**attempt))
+                time.sleep(sleep_time)
         assert last_exc is not None
         raise last_exc

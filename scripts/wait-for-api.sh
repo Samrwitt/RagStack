@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Wait until CorpusForge API liveness succeeds.
+# Wait until RagStack API liveness succeeds.
 set -euo pipefail
 url="${1:-http://localhost:8000/health}"
 attempts="${2:-60}"

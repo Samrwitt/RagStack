@@ -9,7 +9,9 @@ from app.generation.models import ChatMessage, EvidenceStatus
 from app.generation.providers import (
     INSUFFICIENT_MESSAGE,
     ExtractiveLLMProvider,
+    GeminiLLMProvider,
     OpenAIChatLLMProvider,
+    get_llm_provider,
 )
 from app.generation.service import conversation_retrieval_query
 from app.retrieval.models import RetrievalHit
@@ -76,6 +78,42 @@ def test_openai_chat_provider_sends_grounded_prompt(monkeypatch: pytest.MonkeyPa
     assert answer.answer == "Employees receive 22 days. [1]"
 
 
+def test_gemini_provider_sends_grounded_prompt(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured = {}
+
+    def fake_post(url, *, params, headers, json, timeout):  # noqa: ANN001
+        captured.update(url=url, params=params, headers=headers, json=json, timeout=timeout)
+        return httpx.Response(
+            200,
+            json={
+                "candidates": [
+                    {
+                        "content": {
+                            "parts": [{"text": "Employees receive 22 days of leave per year. [1]"}]
+                        }
+                    }
+                ]
+            },
+            request=httpx.Request("POST", url),
+        )
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+    hit = _hit("Employees receive 22 annual leave days.")
+    provider = GeminiLLMProvider(Settings(gemini_api_key="gemini_secret", llm_provider="gemini"))
+
+    answer = provider.answer(question="How many leave days?", context=[hit])
+
+    assert "gemini-" in captured["url"]
+    assert captured["params"]["key"] == "gemini_secret"
+    assert answer.evidence_status == EvidenceStatus.GROUNDED
+    assert answer.answer == "Employees receive 22 days of leave per year. [1]"
+
+
+def test_get_llm_provider_resolves_gemini() -> None:
+    provider = get_llm_provider("gemini", Settings(gemini_api_key="key", llm_provider="gemini"))
+    assert provider.name == "gemini"
+
+
 def test_resolve_citations_deduplicates_hits() -> None:
     hit = _hit("Employees receive 22 annual leave days.")
 
@@ -96,3 +134,4 @@ def test_conversation_retrieval_query_uses_recent_history() -> None:
     )
 
     assert query == "Tell me about leave. The handbook has a leave section. What changed?"
+

@@ -1,6 +1,6 @@
-# CorpusForge Dashboard
+# RagStack Dashboard
 
-Next.js dashboard for CorpusForge operations.
+Next.js dashboard for RagStack operations.
 
 ```bash
 cd frontend

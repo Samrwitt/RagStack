@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./styles.css";
 
 export const metadata: Metadata = {
-  title: "CorpusForge",
-  description: "Operational dashboard for CorpusForge"
+  title: "RagStack",
+  description: "Operational dashboard for RagStack"
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

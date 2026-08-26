@@ -72,9 +72,9 @@ class Settings(BaseSettings):
     chunk_size: int = 256
     chunk_overlap: int = 32
     parent_chunk_max_tokens: int = 1024
-    embedding_provider: str = "openai"
-    embedding_model: str = "text-embedding-3-small"
-    embedding_dimension: int = 1536
+    embedding_provider: str = "gemini"
+    embedding_model: str = "gemini-embedding-001"
+    embedding_dimension: int = 3072
     embedding_batch_size: int = 32
     embedding_max_retries: int = 3
     embedding_retry_base_seconds: float = 0.05
@@ -82,8 +82,10 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     openai_base_url: str = "https://api.openai.com/v1"
     openai_timeout_seconds: float = 30.0
+    gemini_api_key: str = ""
+    gemini_model: str = "gemini-2.5-flash"
     llm_model: str = "gpt-4o-mini"
-    llm_max_tokens: int = 700
+    llm_max_tokens: int = 1000
     qdrant_collection: str = "ragstack_chunks"
     reranker_provider: str = "cohere"
     reranker_enabled: bool = True
@@ -92,7 +94,7 @@ class Settings(BaseSettings):
     reranker_timeout_seconds: float = 30.0
     cohere_api_key: str = ""
     cohere_base_url: str = "https://api.cohere.com"
-    context_token_budget: int = 1600
+    context_token_budget: int = 4000
     llm_provider: str = "openai"
     min_grounding_score: float = 0.01
     rate_limit_enabled: bool = True

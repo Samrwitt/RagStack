@@ -11,7 +11,7 @@ import {
   ShieldCheck
 } from "lucide-react";
 import type { ReactNode } from "react";
-import type { Document, HealthReport, Job, Source } from "./api";
+import type { DocumentItem, HealthReport, Job, Source } from "./api";
 import { ChatClient } from "./chat-client";
 import { EvaluationClient } from "./evaluation/evaluation-client";
 import { RetrievalDebuggerClient } from "./retrieval/retrieval-client";
@@ -80,7 +80,7 @@ export function Metrics({
 }: {
   health: HealthReport | null;
   sources: Source[];
-  documents: Document[];
+  documents: DocumentItem[];
   jobs: Job[];
 }) {
   const activeJobs = countActiveJobs(jobs);
@@ -149,7 +149,7 @@ export function DocumentsPanel({
   wide = false,
   limit
 }: {
-  documents: Document[];
+  documents: DocumentItem[];
   wide?: boolean;
   limit?: number;
 }) {
@@ -199,7 +199,7 @@ export function EvaluationPanel({
 }: {
   health: HealthReport | null;
   sources: Source[];
-  documents: Document[];
+  documents: DocumentItem[];
   wide?: boolean;
 }) {
   return (
@@ -363,7 +363,7 @@ function countActiveJobs(jobs: Job[]) {
   return jobs.filter((job) => ["queued", "running", "retrying"].includes(job.status)).length;
 }
 
-function countIndexedDocuments(documents: Document[]) {
+function countIndexedDocuments(documents: DocumentItem[]) {
   return documents.filter((document) => document.current_state === "indexed").length;
 }
 
